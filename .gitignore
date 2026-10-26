@@ -1,0 +1,26 @@
+# Build directories
+build/
+bin/
+obj/
+out/
+.vs/
+.vscode/
+
+# Compiled binaries & artifacts
+*.exe
+*.dll
+*.sys
+*.lib
+*.obj
+*.o
+*.a
+*.pdb
+*.ilk
+*.exp
+
+# CMake artifacts
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/

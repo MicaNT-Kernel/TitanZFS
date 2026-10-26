@@ -1,0 +1,59 @@
+name: TitanZFS Continuous Integration
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    name: Build & Test (${{ matrix.os }} - ${{ matrix.compiler }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            compiler: clang
+          - os: ubuntu-latest
+            compiler: gcc
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Configure CMake (Windows Clang)
+        if: runner.os == 'Windows'
+        run: |
+          cmake -B build -G "Visual Studio 17 2022" -T ClangCL
+
+      - name: Build (Windows Clang)
+        if: runner.os == 'Windows'
+        run: |
+          cmake --build build --config Release
+
+      - name: Run Tests (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          .\build\Release\titanzfs_tests.exe
+          .\build\Release\zpool.exe status
+          .\build\Release\zfs.exe list
+
+      - name: Configure CMake (Linux GCC)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update && sudo apt-get install -y g++-13
+          cmake -B build -DCMAKE_CXX_COMPILER=g++-13 -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cmake --build build --config Release
+
+      - name: Run Tests (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          ./build/titanzfs_tests
+          ./build/zpool status
+          ./build/zfs list
