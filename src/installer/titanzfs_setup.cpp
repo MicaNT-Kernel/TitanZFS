@@ -126,6 +126,7 @@ enum {
     ID_BTN_BROWSE,
     ID_CHK_PATH,
     ID_CHK_SERVICE,
+    ID_CHK_WINFSP,
     ID_CHK_STARTMENU,
     ID_CHK_DESKTOP,
     ID_CHK_LAUNCH,
@@ -141,6 +142,7 @@ HWND g_hEditDest{nullptr};
 HWND g_hBtnBrowse{nullptr};
 HWND g_hChkPath{nullptr};
 HWND g_hChkService{nullptr};
+HWND g_hChkWinFsp{nullptr};
 HWND g_hChkStartMenu{nullptr};
 HWND g_hChkDesktop{nullptr};
 HWND g_hChkLaunch{nullptr};
@@ -148,6 +150,19 @@ HWND g_hProgress{nullptr};
 HWND g_hStaticStatus{nullptr};
 HWND g_hBtnInstall{nullptr};
 HWND g_hBtnCancel{nullptr};
+
+bool IsWinFspInstalled() {
+    HKEY hKey;
+    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\WinFsp", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+        RegCloseKey(hKey);
+        return true;
+    }
+    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\WOW6432Node\\WinFsp", 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+        RegCloseKey(hKey);
+        return true;
+    }
+    return false;
+}
 
 HFONT g_hFontTitle{nullptr};
 HFONT g_hFontSub{nullptr};
@@ -340,7 +355,7 @@ bool CopyAppFile(const std::wstring& srcDir, const std::wstring& dstDir, const s
 }
 
 // Perform Installation Task
-bool PerformInstall(const std::wstring& dstDir, bool addPath, bool installSvc, bool startMenu, bool desktop, HWND hProg, HWND hStat) {
+bool PerformInstall(const std::wstring& dstDir, bool addPath, bool installSvc, bool installWinFsp, bool startMenu, bool desktop, HWND hProg, HWND hStat) {
     auto setStatus = [&](const std::wstring& text, int pos) {
         if (hStat) SetWindowTextW(hStat, text.c_str());
         if (hProg) SendMessageW(hProg, PBM_SETPOS, pos, 0);
@@ -352,14 +367,57 @@ bool PerformInstall(const std::wstring& dstDir, bool addPath, bool installSvc, b
 
     std::wstring srcDir = GetModuleDir();
 
-    // 1. Install Executables and Assets (from Embedded Bundle or Loose Files)
+    // 1. Install WinFsp Filesystem Driver if requested and missing
+    if (installWinFsp && !IsWinFspInstalled()) {
+        setStatus(L"Installing WinFsp Filesystem Driver (WHQL)...", 15);
+        std::wstring tempMsi = std::filesystem::temp_directory_path().wstring() + L"\\TitanZFS\\winfsp.msi";
+        bool foundMsi = false;
+
+        std::vector<EmbeddedFile> entries;
+        if (ReadEmbeddedPayload(entries)) {
+            for (const auto& ef : entries) {
+                if (ef.name.find("winfsp") != std::string::npos && ef.name.ends_with(".msi")) {
+                    ExtractEmbeddedFile(ef, tempMsi);
+                    foundMsi = std::filesystem::exists(tempMsi, ec);
+                    break;
+                }
+            }
+        }
+
+        if (!foundMsi) {
+            std::wstring localMsi = srcDir + L"\\redist\\winfsp-2.1.25156.msi";
+            if (std::filesystem::exists(localMsi, ec)) {
+                tempMsi = localMsi;
+                foundMsi = true;
+            }
+        }
+
+        if (foundMsi) {
+            STARTUPINFOW si{};
+            si.cb = sizeof(si);
+            PROCESS_INFORMATION pi{};
+            std::wstring cmd = L"msiexec.exe /i \"" + tempMsi + L"\" /qn /norestart";
+            std::vector<wchar_t> cmdBuf(cmd.begin(), cmd.end());
+            cmdBuf.push_back(0);
+            if (CreateProcessW(nullptr, cmdBuf.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+                WaitForSingleObject(pi.hProcess, 60000);
+                CloseHandle(pi.hThread);
+                CloseHandle(pi.hProcess);
+            }
+            if (tempMsi.find(L"TitanZFS") != std::string::npos) {
+                std::filesystem::remove(tempMsi, ec);
+            }
+        }
+    }
+
+    // 2. Install Executables and Assets (from Embedded Bundle or Loose Files)
     std::vector<EmbeddedFile> embeddedFiles;
     bool hasEmbedded = ReadEmbeddedPayload(embeddedFiles);
 
     if (hasEmbedded && !embeddedFiles.empty()) {
         int idx = 0;
         for (const auto& ef : embeddedFiles) {
-            int pct = 20 + static_cast<int>((idx * 45) / embeddedFiles.size());
+            int pct = 25 + static_cast<int>((idx * 40) / embeddedFiles.size());
             std::wstring wName(ef.name.begin(), ef.name.end());
             setStatus(L"Extracting " + wName + L"...", pct);
 
@@ -395,7 +453,7 @@ bool PerformInstall(const std::wstring& dstDir, bool addPath, bool installSvc, b
     GetModuleFileNameW(nullptr, thisExe, MAX_PATH);
     std::filesystem::copy_file(thisExe, dstDir + L"\\titanzfs_setup.exe", std::filesystem::copy_options::overwrite_existing, ec);
 
-    // 2. Add to PATH
+    // 3. Add to PATH
     if (addPath) {
         setStatus(L"Configuring System PATH environment variables...", 70);
         AddToSystemPath(dstDir);
@@ -564,24 +622,34 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             g_hBtnBrowse = CreateWindowExW(0, L"BUTTON", L"Browse...", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 685, 137, 95, 30, hwnd, reinterpret_cast<HMENU>(ID_BTN_BROWSE), g_hInstance, nullptr);
             SendMessageW(g_hBtnBrowse, WM_SETFONT, reinterpret_cast<WPARAM>(g_hFontNormal), TRUE);
 
-            // Spaced Checkboxes (y = 185 to 320)
-            g_hChkPath = CreateWindowExW(0, L"BUTTON", L"Add TitanZFS to System PATH (zpool & zfs CLI access)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP, 290, 185, 490, 24, hwnd, reinterpret_cast<HMENU>(ID_CHK_PATH), g_hInstance, nullptr);
+            // Spaced Checkboxes (y = 180 to 320)
+            bool winfspPresent = IsWinFspInstalled();
+            std::wstring winfspLabel = winfspPresent ? 
+                L"WinFsp Filesystem Driver (Detected & Configured)" : 
+                L"Install WinFsp Filesystem Driver (Required for drive letters)";
+
+            g_hChkPath = CreateWindowExW(0, L"BUTTON", L"Add TitanZFS to System PATH (zpool & zfs CLI access)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP, 290, 180, 490, 22, hwnd, reinterpret_cast<HMENU>(ID_CHK_PATH), g_hInstance, nullptr);
             SendMessageW(g_hChkPath, WM_SETFONT, reinterpret_cast<WPARAM>(g_hFontNormal), TRUE);
             SendMessageW(g_hChkPath, BM_SETCHECK, BST_CHECKED, 0);
 
-            g_hChkService = CreateWindowExW(0, L"BUTTON", L"Register & Start TitanZFS Windows NT Service (SERVICE_AUTO_START)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP, 290, 218, 490, 24, hwnd, reinterpret_cast<HMENU>(ID_CHK_SERVICE), g_hInstance, nullptr);
+            g_hChkService = CreateWindowExW(0, L"BUTTON", L"Register & Start TitanZFS Windows NT Service (SERVICE_AUTO_START)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP, 290, 206, 490, 22, hwnd, reinterpret_cast<HMENU>(ID_CHK_SERVICE), g_hInstance, nullptr);
             SendMessageW(g_hChkService, WM_SETFONT, reinterpret_cast<WPARAM>(g_hFontNormal), TRUE);
             SendMessageW(g_hChkService, BM_SETCHECK, BST_CHECKED, 0);
 
-            g_hChkStartMenu = CreateWindowExW(0, L"BUTTON", L"Create Start Menu Program shortcut", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP, 290, 251, 490, 24, hwnd, reinterpret_cast<HMENU>(ID_CHK_STARTMENU), g_hInstance, nullptr);
+            DWORD winfspStyle = WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | (winfspPresent ? WS_DISABLED : WS_TABSTOP);
+            g_hChkWinFsp = CreateWindowExW(0, L"BUTTON", winfspLabel.c_str(), winfspStyle, 290, 232, 490, 22, hwnd, reinterpret_cast<HMENU>(ID_CHK_WINFSP), g_hInstance, nullptr);
+            SendMessageW(g_hChkWinFsp, WM_SETFONT, reinterpret_cast<WPARAM>(g_hFontNormal), TRUE);
+            SendMessageW(g_hChkWinFsp, BM_SETCHECK, BST_CHECKED, 0);
+
+            g_hChkStartMenu = CreateWindowExW(0, L"BUTTON", L"Create Start Menu Program shortcut", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP, 290, 258, 490, 22, hwnd, reinterpret_cast<HMENU>(ID_CHK_STARTMENU), g_hInstance, nullptr);
             SendMessageW(g_hChkStartMenu, WM_SETFONT, reinterpret_cast<WPARAM>(g_hFontNormal), TRUE);
             SendMessageW(g_hChkStartMenu, BM_SETCHECK, BST_CHECKED, 0);
 
-            g_hChkDesktop = CreateWindowExW(0, L"BUTTON", L"Create Desktop shortcut", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP, 290, 284, 490, 24, hwnd, reinterpret_cast<HMENU>(ID_CHK_DESKTOP), g_hInstance, nullptr);
+            g_hChkDesktop = CreateWindowExW(0, L"BUTTON", L"Create Desktop shortcut", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP, 290, 284, 490, 22, hwnd, reinterpret_cast<HMENU>(ID_CHK_DESKTOP), g_hInstance, nullptr);
             SendMessageW(g_hChkDesktop, WM_SETFONT, reinterpret_cast<WPARAM>(g_hFontNormal), TRUE);
             SendMessageW(g_hChkDesktop, BM_SETCHECK, BST_CHECKED, 0);
 
-            g_hChkLaunch = CreateWindowExW(0, L"BUTTON", L"Launch TitanZFS Management Console after installation", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP, 290, 317, 490, 24, hwnd, reinterpret_cast<HMENU>(ID_CHK_LAUNCH), g_hInstance, nullptr);
+            g_hChkLaunch = CreateWindowExW(0, L"BUTTON", L"Launch TitanZFS Management Console after installation", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP, 290, 310, 490, 22, hwnd, reinterpret_cast<HMENU>(ID_CHK_LAUNCH), g_hInstance, nullptr);
             SendMessageW(g_hChkLaunch, WM_SETFONT, reinterpret_cast<WPARAM>(g_hFontNormal), TRUE);
             SendMessageW(g_hChkLaunch, BM_SETCHECK, BST_CHECKED, 0);
 
@@ -698,6 +766,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
                 bool addPath = (SendMessageW(g_hChkPath, BM_GETCHECK, 0, 0) == BST_CHECKED);
                 bool installSvc = (SendMessageW(g_hChkService, BM_GETCHECK, 0, 0) == BST_CHECKED);
+                bool installWinFsp = (SendMessageW(g_hChkWinFsp, BM_GETCHECK, 0, 0) == BST_CHECKED);
                 bool startMenu = (SendMessageW(g_hChkStartMenu, BM_GETCHECK, 0, 0) == BST_CHECKED);
                 bool desktop = (SendMessageW(g_hChkDesktop, BM_GETCHECK, 0, 0) == BST_CHECKED);
                 bool launchAdmin = (SendMessageW(g_hChkLaunch, BM_GETCHECK, 0, 0) == BST_CHECKED);
@@ -708,7 +777,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
                 // Run install in worker thread
                 std::thread([=]() {
-                    PerformInstall(dstDir, addPath, installSvc, startMenu, desktop, g_hProgress, g_hStaticStatus);
+                    PerformInstall(dstDir, addPath, installSvc, installWinFsp, startMenu, desktop, g_hProgress, g_hStaticStatus);
                     g_InstallFinished = true;
                     if (launchAdmin) {
                         SetWindowTextW(g_hBtnInstall, L"Finish & Launch");
@@ -848,7 +917,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
 
     if (isSilent) {
         std::wstring dstDir = L"C:\\Program Files\\TitanZFS";
-        bool res = PerformInstall(dstDir, true, true, true, true, nullptr, nullptr);
+        bool res = PerformInstall(dstDir, true, true, true, true, true, nullptr, nullptr);
         Gdiplus::GdiplusShutdown(g_gdiplusToken);
         return res ? 0 : 1;
     }

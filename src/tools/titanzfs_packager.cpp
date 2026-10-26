@@ -94,6 +94,8 @@ int main(int argc, char* argv[]) {
         std::string name = p.filename().string();
         if (name == "titanzfs_hero.jpg") {
             name = "assets/titanzfs_hero.jpg";
+        } else if (name.find("winfsp") != std::string::npos && name.ends_with(".msi")) {
+            name = "redist/winfsp.msi";
         }
 
         PackEntry ent;

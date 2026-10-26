@@ -56,6 +56,12 @@ if (WIN32)
     target_link_libraries(titanzfs_setup PRIVATE titanzfs_core user32 gdi32 gdiplus comctl32 dwmapi uxtheme ole32 oleaut32 shell32 advapi32)
     add_dependencies(titanzfs_setup titanzfs_admin titanzfs_svc titanzfs_mount zpool zfs titanzfs_packager)
 
+    set(WINFSP_MSI "${CMAKE_CURRENT_SOURCE_DIR}/redist/winfsp-2.1.25156.msi")
+    set(PACKAGER_EXTRA_ARGS "")
+    if (EXISTS "${WINFSP_MSI}")
+        set(PACKAGER_EXTRA_ARGS "${WINFSP_MSI}")
+    endif()
+
     add_custom_command(
         TARGET titanzfs_setup POST_BUILD
         COMMAND titanzfs_packager $<TARGET_FILE:titanzfs_setup>
@@ -65,7 +71,8 @@ if (WIN32)
                 $<TARGET_FILE:zpool>
                 $<TARGET_FILE:zfs>
                 ${CMAKE_CURRENT_SOURCE_DIR}/assets/titanzfs_hero.jpg
-        COMMENT "Embedding all binaries and assets into standalone titanzfs_setup.exe..."
+                ${PACKAGER_EXTRA_ARGS}
+        COMMENT "Embedding all binaries, WinFsp, and assets into standalone titanzfs_setup.exe..."
     )
 endif()
 
@@ -83,6 +90,7 @@ install(TARGETS titanzfs_tests zpool zfs titanzfs_svc RUNTIME DESTINATION bin)
 if (WIN32)
     install(TARGETS titanzfs_mount titanzfs_admin titanzfs_setup RUNTIME DESTINATION bin)
     install(DIRECTORY assets/ DESTINATION assets)
+    install(DIRECTORY redist/ DESTINATION redist OPTIONAL)
 endif()
 
 set(CPACK_GENERATOR "ZIP")
