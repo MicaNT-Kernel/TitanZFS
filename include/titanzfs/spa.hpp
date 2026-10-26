@@ -3,6 +3,7 @@
 #include "titanzfs/types.hpp"
 #include "titanzfs/vdev.hpp"
 #include "titanzfs/dmu.hpp"
+#include "titanzfs/metaslab.hpp"
 #include <vector>
 #include <memory>
 #include <map>
@@ -15,10 +16,15 @@ public:
     ZfsPool(std::string name, std::shared_ptr<IVdev> rootVdev)
         : name_(std::move(name)), rootVdev_(std::move(rootVdev)) {
         initializeUberblockRing();
+        initializeMetaslabs();
     }
 
     [[nodiscard]] const std::string& getName() const noexcept { return name_; }
     [[nodiscard]] std::shared_ptr<IVdev> getRootVdev() const noexcept { return rootVdev_; }
+    [[nodiscard]] const std::string& getVdevType() const noexcept { return vdevType_; }
+    void setVdevType(std::string t) noexcept { vdevType_ = std::move(t); }
+    [[nodiscard]] const std::vector<std::string>& getDevicePaths() const noexcept { return devPaths_; }
+    void setDevicePaths(std::vector<std::string> paths) noexcept { devPaths_ = std::move(paths); }
     [[nodiscard]] VdevState getState() const noexcept {
         return rootVdev_ ? rootVdev_->getState() : VdevState::Faulted;
     }
@@ -40,6 +46,11 @@ public:
         activeUberblockIndex_ = (activeUberblockIndex_ + 1) % UBERBLOCK_RING_SLOTS;
         uberblocks_[activeUberblockIndex_] = ub;
 
+        // Persist Metaslab Space Maps to disk
+        if (metaslabGroup_ && rootVdev_) {
+            metaslabGroup_->sync(*rootVdev_, currentTxg_);
+        }
+
         // Persist Uberblock to VDEV LBA range
         if (rootVdev_) {
             const uint64_t uberblockLbaOffset = activeUberblockIndex_ * UBERBLOCK_SIZE;
@@ -51,6 +62,21 @@ public:
 
     [[nodiscard]] const Uberblock& getActiveUberblock() const noexcept {
         return uberblocks_[activeUberblockIndex_];
+    }
+
+    // Metaslab Space Management
+    bool allocateBlocks(uint64_t count, uint64_t& outBlock) {
+        if (!metaslabGroup_) return false;
+        return metaslabGroup_->allocate(count, outBlock);
+    }
+
+    bool freeBlocks(uint64_t block, uint64_t count) {
+        if (!metaslabGroup_) return false;
+        return metaslabGroup_->free(block, count);
+    }
+
+    [[nodiscard]] std::shared_ptr<MetaslabGroup> getMetaslabGroup() const noexcept {
+        return metaslabGroup_;
     }
 
     // Dataset Management
@@ -114,11 +140,22 @@ private:
         }
     }
 
+    void initializeMetaslabs() {
+        uint64_t totalBlocks = 16384;
+        if (rootVdev_ && rootVdev_->getTotalCapacity() > 0) {
+            totalBlocks = rootVdev_->getTotalCapacity() / ZFS_BLOCK_SIZE;
+        }
+        metaslabGroup_ = std::make_shared<MetaslabGroup>(totalBlocks);
+    }
+
     std::string name_;
+    std::string vdevType_{"stripe"};
+    std::vector<std::string> devPaths_;
     std::shared_ptr<IVdev> rootVdev_;
     uint64_t currentTxg_{1};
     size_t activeUberblockIndex_{0};
     std::vector<Uberblock> uberblocks_;
+    std::shared_ptr<MetaslabGroup> metaslabGroup_;
     std::map<std::string, std::shared_ptr<ZfsDataset>> datasets_;
 };
 
