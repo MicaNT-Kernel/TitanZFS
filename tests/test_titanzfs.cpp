@@ -7,6 +7,7 @@
 #include "titanzfs/win32_device.hpp"
 #include "titanzfs/compression.hpp"
 #include "titanzfs/metaslab.hpp"
+#include "titanzfs/ipc.hpp"
 
 #ifdef _WIN32
 #include "titanzfs/winfsp_bridge.hpp"
@@ -379,8 +380,87 @@ int main() {
     std::cout << "PASSED\n";
 #endif
 
+    // ------------------------------------------------------------------------
+    // Test 11: High-Speed Named Pipe / Domain Socket IPC Subsystem
+    // ------------------------------------------------------------------------
+    std::cout << "[TEST 11] High-Speed Named Pipe IPC Subsystem... ";
+    {
+        titanzfs::IpcServer server;
+        TEST_CHECK(server.start([](uint32_t cmd, const std::string& req, std::string& resp) -> int {
+            if (cmd == titanzfs::IpcCmdPing) {
+                resp = "PONG";
+                return 0;
+            }
+            if (cmd == titanzfs::IpcCmdCliPass) {
+                resp = "CLI_OK:" + req;
+                return 0;
+            }
+            return -1;
+        }));
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        TEST_CHECK(titanzfs::IpcClient::isServerRunning());
+
+        std::string pingResp;
+        int code = titanzfs::IpcClient::send(titanzfs::IpcCmdPing, "", pingResp);
+        TEST_CHECK(code == 0);
+        TEST_CHECK(pingResp == "PONG");
+
+        std::string cliResp;
+        code = titanzfs::IpcClient::send(titanzfs::IpcCmdCliPass, "zfs snapshot tank/data@test", cliResp);
+        TEST_CHECK(code == 0);
+        TEST_CHECK(cliResp == "CLI_OK:zfs snapshot tank/data@test");
+
+        server.stop();
+        TEST_CHECK(!server.isRunning());
+    }
+    std::cout << "PASSED\n";
+
+#ifdef _WIN32
+    // ------------------------------------------------------------------------
+    // Test 12: Virtual .zfs/snapshot File Navigation & Immutability
+    // ------------------------------------------------------------------------
+    std::cout << "[TEST 12] Virtual .zfs/snapshot Navigation & Immutability... ";
+    {
+        auto ds = std::make_shared<titanzfs::ZfsDataset>("tank/test_snap");
+        std::string originalContent = "TitanZFS Sovereign Native NT Filesystem";
+        ds->createFile("document.txt", false, 1);
+        ds->writeFile("document.txt", originalContent.data(), originalContent.size(), 1);
+
+        TEST_CHECK(ds->createSnapshot("snap_v1", 1) == titanzfs::Status::Success);
+
+        // Modify active file
+        std::string modifiedContent = "Overwritten in active dataset";
+        ds->writeFile("document.txt", modifiedContent.data(), modifiedContent.size(), 2);
+
+        titanzfs::WinFspMountSession session;
+        session.setDataset(ds);
+
+        // Verify root .zfs virtual directory
+        titanzfs::FSP_FSCTL_FILE_INFO fi{};
+        session.populateFileInfo(".zfs", &fi);
+        TEST_CHECK((fi.FileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0);
+
+        session.populateFileInfo(".zfs/snapshot", &fi);
+        TEST_CHECK((fi.FileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0);
+
+        session.populateFileInfo(".zfs/snapshot/snap_v1", &fi);
+        TEST_CHECK((fi.FileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0);
+
+        // Verify file in snapshot has original size and read-only attribute
+        session.populateFileInfo(".zfs/snapshot/snap_v1/document.txt", &fi);
+        TEST_CHECK(fi.FileSize == originalContent.size());
+        TEST_CHECK((fi.FileAttributes & FILE_ATTRIBUTE_READONLY) != 0);
+
+        // Verify active file has modified size
+        session.populateFileInfo("document.txt", &fi);
+        TEST_CHECK(fi.FileSize == modifiedContent.size());
+    }
+    std::cout << "PASSED\n";
+#endif
+
     std::cout << "\n------------------------------------------------------------------------\n";
-    std::cout << "All 10 TitanZFS production unit tests passed successfully!\n";
+    std::cout << "All TitanZFS standalone production unit tests passed successfully!\n";
     std::cout << "------------------------------------------------------------------------\n";
     return 0;
 }

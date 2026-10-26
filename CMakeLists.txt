@@ -32,6 +32,9 @@ target_link_libraries(zpool PRIVATE titanzfs_core)
 add_executable(zfs src/tools/zfs_cli.cpp)
 target_link_libraries(zfs PRIVATE titanzfs_core)
 
+add_executable(titanzfs_svc src/service/titanzfs_svc.cpp)
+target_link_libraries(titanzfs_svc PRIVATE titanzfs_core)
+
 if (WIN32)
     add_executable(titanzfs_mount src/mount/winfsp_mount.cpp)
     target_link_libraries(titanzfs_mount PRIVATE titanzfs_core)

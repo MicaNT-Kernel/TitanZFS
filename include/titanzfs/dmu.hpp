@@ -96,6 +96,13 @@ public:
         return files_.contains(path);
     }
 
+    Status removeFile(const std::string& path) {
+        auto it = files_.find(path);
+        if (it == files_.end()) return Status::ObjectNameNotFound;
+        files_.erase(it);
+        return Status::Success;
+    }
+
     // O(1) Instantaneous CoW Snapshot
     Status createSnapshot(const std::string& snapName, uint64_t currentTxg) {
         if (snapshots_.contains(snapName)) return Status::ObjectNameCollision;

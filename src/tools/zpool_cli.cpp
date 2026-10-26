@@ -5,11 +5,9 @@
 #include <cstring>
 #include "titanzfs/titanzfs.hpp"
 #include "titanzfs/win32_device.hpp"
+#include "titanzfs/ipc.hpp"
 
 int main(int argc, char* argv[]) {
-    auto& sys = titanzfs::TitanZfsSubsystem::Get();
-    sys.loadCache();
-
     if (argc < 2 || std::string(argv[1]) == "help") {
         std::cout << "TitanZFS Storage Pool Management Utility (Windows NT & MicaNT Native)\n";
         std::cout << "usage: zpool <subcommand> <args ...>\n\n";
@@ -24,6 +22,27 @@ int main(int argc, char* argv[]) {
     }
 
     const std::string cmd = argv[1];
+
+    // If background service daemon is active, route status and list queries through IPC
+    if (titanzfs::IpcClient::isServerRunning()) {
+        if (cmd == "status") {
+            std::string targetPool = (argc >= 3) ? argv[2] : "";
+            if (targetPool.starts_with("-")) targetPool = (argc >= 4) ? argv[3] : "";
+            std::string resp;
+            int code = titanzfs::IpcClient::send(titanzfs::IpcCmdZpoolStatus, targetPool, resp);
+            std::cout << resp;
+            return code;
+        }
+        if (cmd == "list") {
+            std::string resp;
+            int code = titanzfs::IpcClient::send(titanzfs::IpcCmdZpoolList, "", resp);
+            std::cout << resp;
+            return code;
+        }
+    }
+
+    auto& sys = titanzfs::TitanZfsSubsystem::Get();
+    sys.loadCache();
 
     if (cmd == "create") {
         if (argc < 3) {

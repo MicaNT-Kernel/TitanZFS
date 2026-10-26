@@ -6,11 +6,9 @@
 #include <fstream>
 #include "titanzfs/titanzfs.hpp"
 #include "titanzfs/win32_device.hpp"
+#include "titanzfs/ipc.hpp"
 
 int main(int argc, char* argv[]) {
-    auto& sys = titanzfs::TitanZfsSubsystem::Get();
-    sys.loadCache();
-
     if (argc < 2 || std::string(argv[1]) == "help") {
         std::cout << "TitanZFS Dataset & Snapshot Management Utility (Windows NT & MicaNT Native)\n";
         std::cout << "usage: zfs <subcommand> <args ...>\n\n";
@@ -27,6 +25,41 @@ int main(int argc, char* argv[]) {
     }
 
     const std::string cmd = argv[1];
+
+    // If background service daemon is active, route queries and mounts through IPC
+    if (titanzfs::IpcClient::isServerRunning()) {
+        if (cmd == "list") {
+            std::string resp;
+            int code = titanzfs::IpcClient::send(titanzfs::IpcCmdZfsList, "", resp);
+            std::cout << resp;
+            return code;
+        }
+        if (cmd == "snapshot" && argc >= 3) {
+            std::string resp;
+            int code = titanzfs::IpcClient::send(titanzfs::IpcCmdZfsSnapshot, argv[2], resp);
+            if (code == 0) std::cout << resp << "\n";
+            else std::cerr << resp << "\n";
+            return code;
+        }
+        if (cmd == "mount" && argc >= 4) {
+            std::string payload = std::string(argv[2]) + " " + argv[3];
+            std::string resp;
+            int code = titanzfs::IpcClient::send(titanzfs::IpcCmdZfsMount, payload, resp);
+            if (code == 0) std::cout << resp << "\n";
+            else std::cerr << resp << "\n";
+            return code;
+        }
+        if (cmd == "unmount" && argc >= 3) {
+            std::string resp;
+            int code = titanzfs::IpcClient::send(titanzfs::IpcCmdZfsUnmount, argv[2], resp);
+            if (code == 0) std::cout << resp << "\n";
+            else std::cerr << resp << "\n";
+            return code;
+        }
+    }
+
+    auto& sys = titanzfs::TitanZfsSubsystem::Get();
+    sys.loadCache();
 
     if (cmd == "list") {
         if (sys.getPools().empty()) {
