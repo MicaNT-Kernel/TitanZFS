@@ -20,12 +20,12 @@ struct ZfsFile {
 };
 
 // ============================================================================
-// Clean-Room On-Wire Stream Serialization Protocol (zfs send / zfs recv)
+// On-Wire Stream Serialization Protocol (zfs send / zfs recv)
 // ============================================================================
 
 #pragma pack(push, 1)
 struct ZfsStreamHeader {
-    uint64_t magic{0x5A46535354524D31ULL}; // "ZFSSTRM1" (Clean-room ZFS stream signature)
+    uint64_t magic{0x5A46535354524D31ULL}; // "ZFSSTRM1" (Stream signature)
     uint64_t fileCount{0};
     uint64_t streamBirthTxg{0};
     Checksum256 streamChecksum{};

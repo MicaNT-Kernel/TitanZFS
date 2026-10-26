@@ -280,7 +280,7 @@ int main() {
     std::cout << "PASSED\n";
 
     // ------------------------------------------------------------------------
-    // Test 8: Clean-Room Fast Compression (LZ4, RLE, and 87.5% Threshold)
+    // Test 8: Fast Compression (LZ4, RLE, and 87.5% Threshold)
     // ------------------------------------------------------------------------
     std::cout << "[TEST 8] Fast LZ4 / RLE Compression & 87.5% Threshold... ";
     {
@@ -297,7 +297,7 @@ int main() {
         TEST_CHECK(decomp == zeroBlock);
 
         // 2. Highly compressible repeated text -> LZ4
-        std::string pattern = "TitanZFS Sovereign Clean-Room ISO C++23 Storage Engine for Windows NT! ";
+        std::string pattern = "TitanZFS Native C++23 Storage Engine for Windows NT! ";
         std::vector<uint8_t> textBlock(4096);
         for (size_t i = 0; i < 4096; ++i) textBlock[i] = pattern[i % pattern.size()];
 
@@ -423,7 +423,7 @@ int main() {
     std::cout << "[TEST 12] Virtual .zfs/snapshot Navigation & Immutability... ";
     {
         auto ds = std::make_shared<titanzfs::ZfsDataset>("tank/test_snap");
-        std::string originalContent = "TitanZFS Sovereign Native NT Filesystem";
+        std::string originalContent = "TitanZFS Native NT Filesystem";
         ds->createFile("document.txt", false, 1);
         ds->writeFile("document.txt", originalContent.data(), originalContent.size(), 1);
 

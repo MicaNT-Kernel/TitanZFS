@@ -1,24 +1,24 @@
 # TitanZFS
 
-**Sovereign clean-room modern ISO C++23 native ZFS storage pooling engine & filesystem subsystem for Windows NT and MicaNT.**
+**Native C++23 ZFS storage pool engine and filesystem for Windows NT and MicaNT.**
 
-Zero external dependencies. Sub-100KB binary footprint. Enterprise-grade storage virtualization, RAID-Z1 single parity, mirror self-healing, 256-bit Fletcher-4 bit-rot protection, instantaneous Copy-on-Write (CoW) snapshots, and fast LZ4/RLE block compression.
+Zero external dependencies. Sub-100KB binary footprint. Storage pool virtualization, RAID-Z1 single parity, mirror self-healing, 256-bit Fletcher-4 bit-rot protection, instantaneous Copy-on-Write (CoW) snapshots, and fast LZ4/RLE block compression.
 
 ---
 
 ## Deployment Scope & Design Philosophy
 
 > [!NOTE]
-> **Intended Scope:** TitanZFS is engineered specifically for **high-performance secondary storage pools, NVMe/SSD/HDD RAID arrays, media creation volumes, gaming drives, and enterprise backup repositories**.
+> **Intended Scope:** TitanZFS is engineered specifically for **secondary storage pools, NVMe/SSD/HDD RAID arrays, media creation volumes, gaming drives, and backup repositories**.
 > 
 > **Boot Drive Non-Goal:** TitanZFS intentionally does **not** target booting the Windows operating system itself (`C:\`). By design, this avoids the requirement for an unstable, legacy kernel-mode `.sys` boot driver.
 
-### Why User-Mode Subsystem + Raw Block I/O is Superior on Windows
+### Architecture: User-Mode Filesystem and Direct Block I/O
 
-1. **Zero BSODs (Crash-Proof):** The core engine (Fletcher-4, DMU, SPA, RAID-Z1, compression) runs purely in user mode. An I/O error or pool fault will **never** crash or blue-screen your Windows PC.
+1. **System Stability:** The core engine (Fletcher-4, DMU, SPA, RAID-Z1, compression) runs purely in user mode. An I/O error or pool fault will not crash or blue-screen your Windows PC.
 2. **Zero Driver Signing Hassles:** Does **not** require `bcdedit /set testsigning on`, Test Mode watermarks, or disabling Windows Driver Signature Enforcement.
-3. **100% Secure Boot & HVCI Compliant:** Runs cleanly on stock Windows 10, Windows 11, and Windows Server with Secure Boot, BitLocker, and Core Isolation (Memory Integrity) fully enabled.
-4. **Direct Raw Hardware Access:** Talks directly to raw hardware sectors (`\\.\PhysicalDrive1`, `2`, `3`) via Win32 unbuffered block device handles (`FILE_FLAG_NO_BUFFERING | FILE_FLAG_WRITE_THROUGH`) for maximum NVMe/SATA throughput.
+3. **Secure Boot & HVCI Compliant:** Runs cleanly on stock Windows 10, Windows 11, and Windows Server with Secure Boot, BitLocker, and Core Isolation (Memory Integrity) enabled.
+4. **Direct Raw Hardware Access:** Talks directly to raw hardware sectors (`\\.\PhysicalDrive1`, `2`, `3`) via Win32 unbuffered block device handles (`FILE_FLAG_NO_BUFFERING | FILE_FLAG_WRITE_THROUGH`) for high NVMe/SATA throughput.
 5. **Explorer & Win32 Integration:** Projected directly into Windows File Explorer, command line, and applications as a native drive letter (e.g. `Z:\`) via the Microsoft-WHQL-attested WinFsp userland bridge.
 
 ---
@@ -33,7 +33,7 @@ graph TD
     WinFsp --> DMU["Data Management Unit (DMU)<br/>Datasets, CoW Snapshots & .zfs Traversal"]
     Svc -->|5s Async Sync Loop| SPA["Storage Pool Allocator (SPA v5000)<br/>Uberblock Ring & Metaslab Spacemaps"]
     DMU --> SPA
-    SPA --> Comp["Clean-Room Fast Compression<br/>(LZ4 & RLE with 87.5% Threshold)"]
+    SPA --> Comp["Fast Compression<br/>(LZ4 & RLE with 87.5% Threshold)"]
     Comp --> VDEV["Virtual Device Tree (VDEV Engine)"]
     VDEV --> Mirror["Mirror VDEV<br/>(N-Way Transparent Self-Healing)"]
     VDEV --> RaidZ["RAID-Z1 VDEV<br/>(N+1 Dynamic Parity, XOR Rebuild)"]
@@ -67,7 +67,7 @@ Storage pool transactions are committed monotonically through a 128-slot cyclica
 ### 5. Instantaneous CoW Snapshots & Virtual `.zfs/snapshot` Browsing
 Datasets support $O(1)$ instantaneous Copy-on-Write snapshot creation (`zfs snapshot dataset@snap`) and atomic rollback (`zfs rollback dataset@snap`). Mounted drives expose a virtual, read-only `.zfs/snapshot/<snap_name>/` hierarchy directly in Windows File Explorer for drag-and-drop file recovery.
 
-### 6. Clean-Room LZ4 & RLE Block Compression
+### 6. LZ4 & RLE Block Compression
 Automatic block compression with an 87.5% size threshold:
 * All-zero blocks compress to 9 bytes via RLE (`BP_COMP_RLE`).
 * Blocks compressing to $< 87.5\%$ are stored compressed (`BP_COMP_LZ4`) with Fletcher-4 evaluated over the stored payload.
@@ -82,19 +82,19 @@ Snapshots can be serialized into compressed binary streams (`zfs send dataset@sn
 
 ### `titanzfs_setup` - 1-Click Native Standalone Installer & Uninstaller
 ```text
-Interactive 1-Click Win32 Dark Mode Installer featuring native GDI+ hero branding.
+Interactive Win32 Dark Mode Installer.
 Automatically provisions TitanZFS into C:\Program Files\TitanZFS, configures
 system PATH environment variables, registers and starts the Windows NT Auto-Start
 Service, creates Start Menu / Desktop shortcuts, and registers standard Windows
 "Add or Remove Programs" uninstallation entries.
 
 Usage:
-  titanzfs_setup.exe              # Launch interactive 1-click installer
-  titanzfs_setup.exe /silent      # Headless unattended enterprise install (2 seconds)
+  titanzfs_setup.exe              # Launch interactive installer
+  titanzfs_setup.exe /silent      # Unattended silent install
   titanzfs_setup.exe /uninstall   # Clean system removal & service unregistration
 ```
 
-### `titanzfs_admin` - Enterprise Native Win32 Management Console
+### `titanzfs_admin` - Native Win32 Management Console
 ```text
 Native Windows NT 10/11 & Windows Server Dark Mode GUI Management Console.
 Provides real-time visualization of Storage Pools, Physical/Virtual drives,
@@ -170,7 +170,7 @@ ctest --test-dir build --output-on-failure
 
 ## Relationship to MicaNT
 
-TitanZFS was originally conceived and designed as the storage pooling and RAID subsystem for **[MicaNT](https://github.com/MicaNT-Kernel/MicaNT)**—the sovereign clean-room modern ISO C++23 NT operating system executive. Because of its standalone, zero-dependency freestanding design, it is published as an independent project for the broader Windows NT and systems programming community.
+TitanZFS was originally conceived and designed as the storage pooling and RAID subsystem for **[MicaNT](https://github.com/MicaNT-Kernel/MicaNT)**—an independent C++23 NT-compatible operating system kernel. Because of its freestanding architecture, it is also published as a standalone project for Windows NT.
 
 ---
 

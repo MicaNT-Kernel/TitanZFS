@@ -31,13 +31,13 @@ inline void SetCompressionType(BlockPointer& bp, uint64_t compType) noexcept {
 }
 
 // ============================================================================
-// Clean-Room ISO C++23 LZ4 & RLE Fast Compression Engine
+// ISO C++23 LZ4 & RLE Fast Compression Engine
 // ============================================================================
 
 class CompressionEngine {
 public:
     // ------------------------------------------------------------------------
-    // Clean-Room Run-Length Encoding (Zero / Uniform Block Detection)
+    // Run-Length Encoding (Zero / Uniform Block Detection)
     // ------------------------------------------------------------------------
     static bool IsAllZero(std::span<const uint8_t> src) noexcept {
         const size_t u64Count = src.size() / sizeof(uint64_t);
@@ -100,7 +100,7 @@ public:
     }
 
     // ------------------------------------------------------------------------
-    // Clean-Room Standard LZ4 Block Compression
+    // Standard LZ4 Block Compression
     // ------------------------------------------------------------------------
     static size_t CompressLZ4(std::span<const uint8_t> src, std::vector<uint8_t>& dst) {
         dst.clear();
@@ -207,7 +207,7 @@ public:
     }
 
     // ------------------------------------------------------------------------
-    // Clean-Room Standard LZ4 Block Decompression
+    // Standard LZ4 Block Decompression
     // ------------------------------------------------------------------------
     static bool DecompressLZ4(std::span<const uint8_t> src, std::span<uint8_t> dst) noexcept {
         const uint8_t* ip = src.data();

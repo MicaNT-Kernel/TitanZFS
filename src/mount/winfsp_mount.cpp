@@ -23,7 +23,7 @@ void SigHandler(int) {
 int main(int argc, char* argv[]) {
     if (argc < 3) {
         std::cout << "========================================================================\n";
-        std::cout << "    TitanZFS Userland Filesystem Mount Driver (WinFsp Enterprise)       \n";
+        std::cout << "    TitanZFS Userland Filesystem Mount Driver (WinFsp)                 \n";
         std::cout << "========================================================================\n\n";
         std::cout << "Usage: titanzfs_mount <pool/dataset> <drive_letter:>\n";
         std::cout << "Example: titanzfs_mount tank/data Z:\n";
@@ -89,7 +89,7 @@ int main(int argc, char* argv[]) {
 
     // Seed default welcome file if empty
     if (dataset->getFiles().empty()) {
-        const std::string welcomeText = "Welcome to TitanZFS!\nClean-Room Native C++23 ZFS Storage Pool Engine for Windows NT & MicaNT.\n";
+        const std::string welcomeText = "Welcome to TitanZFS!\nNative C++23 ZFS Storage Pool Engine for Windows NT & MicaNT.\n";
         dataset->createFile("README.txt", false, 1);
         dataset->writeFile("README.txt", welcomeText.data(), welcomeText.size(), 1);
         dataset->createFile("Documents", true, 1);

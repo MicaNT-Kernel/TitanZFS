@@ -518,7 +518,7 @@ static bool InstallService() {
 
     // Set service description
     SERVICE_DESCRIPTIONW desc;
-    wchar_t descStr[] = L"Sovereign Clean-Room Native ISO C++23 ZFS Storage Pool Engine and Filesystem Driver for Windows NT and MicaNT.";
+    wchar_t descStr[] = L"TitanZFS storage pool engine and filesystem background service.";
     desc.lpDescription = descStr;
     ChangeServiceConfig2W(schService, SERVICE_CONFIG_DESCRIPTION, &desc);
 

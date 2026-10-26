@@ -18,7 +18,7 @@ namespace titanzfs {
 
 inline constexpr uint64_t UBERBLOCK_MAGIC   = 0x00BAB10C00BAB10CULL; // Canonical ZFS Uberblock magic (Big/Little endian clean)
 inline constexpr uint64_t UBERBLOCK_MAGIC_LE= 0x00BAB10C;
-inline constexpr uint64_t SPA_VERSION       = 5000;                  // Feature flags / Sovereign clean-room NT
+inline constexpr uint64_t SPA_VERSION       = 5000;                  // Feature flags / NT implementation
 inline constexpr size_t   UBERBLOCK_SIZE    = 1024;                  // Standard 1KB Uberblock
 inline constexpr size_t   UBERBLOCK_RING_SLOTS = 128;               // 128-slot cyclical ring
 inline constexpr size_t   ZFS_BLOCK_SIZE    = 4096;                  // Default 4KB records
@@ -139,7 +139,7 @@ static_assert(sizeof(BlockPointer) == 128, "BlockPointer must be exactly 128 byt
 
 struct Uberblock {
     uint64_t     magic{0};       // 0x00BAB10C (8B)
-    uint64_t     version{0};     // 5000 (Sovereign Clean-Room) (8B)
+    uint64_t     version{0};     // 5000 (NT Implementation) (8B)
     uint64_t     txg{0};         // Monotonically increasing Transaction Group (8B)
     uint64_t     guidSum{0};     // XOR sum of all participating top-level VDEVs (8B)
     uint64_t     timestamp{0};   // Epoch seconds (8B)

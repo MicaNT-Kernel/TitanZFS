@@ -931,7 +931,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     g_hMainWnd = CreateWindowExW(
         0,
         CLASS_NAME,
-        L"TitanZFS Storage Pool Management Console (Enterprise)",
+        L"TitanZFS Storage Pool Management Console",
         WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
         CW_USEDEFAULT, CW_USEDEFAULT, 940, 640,
         nullptr, nullptr, hInstance, nullptr

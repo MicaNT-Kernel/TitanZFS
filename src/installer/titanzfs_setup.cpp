@@ -308,7 +308,7 @@ bool PerformInstall(const std::wstring& dstDir, bool addPath, bool installSvc, b
             std::wstring folder = std::wstring(pszPath) + L"\\TitanZFS";
             CoTaskMemFree(pszPath);
             std::filesystem::create_directories(folder, ec);
-            CreateShortcut(adminPath, folder + L"\\TitanZFS Management Console.lnk", L"Enterprise TitanZFS Management Console");
+            CreateShortcut(adminPath, folder + L"\\TitanZFS Management Console.lnk", L"TitanZFS Management Console");
         }
     }
 
@@ -318,7 +318,7 @@ bool PerformInstall(const std::wstring& dstDir, bool addPath, bool installSvc, b
         if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_PublicDesktop, 0, nullptr, &pszPath))) {
             std::wstring folder = std::wstring(pszPath);
             CoTaskMemFree(pszPath);
-            CreateShortcut(adminPath, folder + L"\\TitanZFS Management Console.lnk", L"Enterprise TitanZFS Management Console");
+            CreateShortcut(adminPath, folder + L"\\TitanZFS Management Console.lnk", L"TitanZFS Management Console");
         }
     }
 
@@ -400,7 +400,7 @@ bool PerformUninstall(bool silent) {
     return true;
 }
 
-// Main Window Procedure (Sovereign Studio Left-Sidebar Hero Layout)
+// Main Window Procedure (Left-Sidebar Hero Layout)
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
         case WM_CREATE: {
@@ -419,10 +419,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             HWND hTitle = CreateWindowExW(0, L"STATIC", L"TitanZFS Storage Subsystem", WS_CHILD | WS_VISIBLE, 290, 22, 500, 28, hwnd, nullptr, g_hInstance, nullptr);
             SendMessageW(hTitle, WM_SETFONT, reinterpret_cast<WPARAM>(g_hFontTitle), TRUE);
 
-            HWND hSub = CreateWindowExW(0, L"STATIC", L"Sovereign Clean-Room Native ISO C++23 ZFS Storage Engine", WS_CHILD | WS_VISIBLE, 290, 52, 500, 20, hwnd, nullptr, g_hInstance, nullptr);
+            HWND hSub = CreateWindowExW(0, L"STATIC", L"Native ZFS Storage Engine for Windows", WS_CHILD | WS_VISIBLE, 290, 52, 500, 20, hwnd, nullptr, g_hInstance, nullptr);
             SendMessageW(hSub, WM_SETFONT, reinterpret_cast<WPARAM>(g_hFontSub), TRUE);
 
-            HWND hDesc = CreateWindowExW(0, L"STATIC", L"Deploy high-performance ZFS pools, RAID-Z1, and datasets with zero BSOD risks.", WS_CHILD | WS_VISIBLE, 290, 75, 500, 20, hwnd, nullptr, g_hInstance, nullptr);
+            HWND hDesc = CreateWindowExW(0, L"STATIC", L"Create and manage ZFS storage pools, RAID-Z1 arrays, and datasets.", WS_CHILD | WS_VISIBLE, 290, 75, 500, 20, hwnd, nullptr, g_hInstance, nullptr);
             SendMessageW(hDesc, WM_SETFONT, reinterpret_cast<WPARAM>(g_hFontNormal), TRUE);
 
             // Destination Folder (y = 115)
@@ -461,7 +461,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             SendMessageW(g_hProgress, PBM_SETRANGE32, 0, 100);
             SendMessageW(g_hProgress, PBM_SETPOS, 0, 0);
 
-            g_hStaticStatus = CreateWindowExW(0, L"STATIC", L"Ready to install Sovereign TitanZFS on Windows NT.", WS_CHILD | WS_VISIBLE, 290, 392, 490, 42, hwnd, reinterpret_cast<HMENU>(ID_STATIC_STATUS), g_hInstance, nullptr);
+            g_hStaticStatus = CreateWindowExW(0, L"STATIC", L"Ready to install TitanZFS on Windows.", WS_CHILD | WS_VISIBLE, 290, 392, 490, 42, hwnd, reinterpret_cast<HMENU>(ID_STATIC_STATUS), g_hInstance, nullptr);
             SendMessageW(g_hStaticStatus, WM_SETFONT, reinterpret_cast<WPARAM>(g_hFontNormal), TRUE);
 
             // Action Buttons (y = 465)
@@ -501,7 +501,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 Gdiplus::SolidBrush sBrush(Gdiplus::Color(220, 0, 200, 255));
 
                 graphics.DrawString(L"TitanZFS v1.0.0", -1, &fTitle, Gdiplus::PointF(16.0f, static_cast<Gdiplus::REAL>(height - 52)), &tBrush);
-                graphics.DrawString(L"Sovereign NT Edition", -1, &fSub, Gdiplus::PointF(16.0f, static_cast<Gdiplus::REAL>(height - 30)), &sBrush);
+                graphics.DrawString(L"Windows Edition", -1, &fSub, Gdiplus::PointF(16.0f, static_cast<Gdiplus::REAL>(height - 30)), &sBrush);
             } else {
                 HBRUSH hSideBrush = CreateSolidBrush(RGB(15, 23, 35));
                 RECT rcSide{0, 0, 260, height};
@@ -670,7 +670,7 @@ LRESULT CALLBACK SplashWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
                 Gdiplus::Font font(&fontFamily, 9.5f, Gdiplus::FontStyleRegular, Gdiplus::UnitPoint);
                 Gdiplus::SolidBrush textBrush(Gdiplus::Color(240, 225, 235, 245));
 
-                std::wstring statusMsg = L"Initializing TitanZFS Sovereign NT Subsystem Engine...";
+                std::wstring statusMsg = L"Initializing TitanZFS...";
                 if (g_SplashProgress > 40) statusMsg = L"Verifying system prerequisites and storage topology...";
                 if (g_SplashProgress > 80) statusMsg = L"Loading TitanZFS Setup Wizard...";
 
@@ -787,7 +787,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
     g_hMainWnd = CreateWindowExW(
         0,
         CLASS_NAME,
-        L"TitanZFS Storage Pool Subsystem Setup",
+        L"TitanZFS Setup",
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
         CW_USEDEFAULT, CW_USEDEFAULT, 830, 560,
         nullptr, nullptr, hInstance, nullptr
