@@ -135,6 +135,14 @@ public:
         return files_;
     }
 
+    [[nodiscard]] const std::string& getMountPoint() const noexcept {
+        return mountPoint_;
+    }
+
+    void setMountPoint(std::string mp) {
+        mountPoint_ = std::move(mp);
+    }
+
     // ------------------------------------------------------------------------
     // ZFS Send: Serialize Snapshot to Compressed, Checksummed Binary Stream
     // ------------------------------------------------------------------------
@@ -289,6 +297,7 @@ public:
 
 private:
     std::string name_;
+    std::string mountPoint_{};
     std::map<std::string, ZfsFile> files_;
     std::map<std::string, std::map<std::string, ZfsFile>> snapshots_;
     std::map<std::string, uint64_t> snapshotTxgs_;

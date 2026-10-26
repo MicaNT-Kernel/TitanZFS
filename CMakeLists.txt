@@ -46,7 +46,7 @@ if (WIN32)
     add_executable(titanzfs_mount src/mount/winfsp_mount.cpp)
     target_link_libraries(titanzfs_mount PRIVATE titanzfs_core)
 
-    add_executable(titanzfs_admin src/admin/titanzfs_admin.cpp)
+    add_executable(titanzfs_admin WIN32 src/admin/titanzfs_admin.cpp)
     target_link_libraries(titanzfs_admin PRIVATE titanzfs_core user32 gdi32 comctl32 dwmapi uxtheme ole32 shell32)
 endif()
 

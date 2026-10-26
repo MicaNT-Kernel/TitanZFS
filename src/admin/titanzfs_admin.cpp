@@ -148,7 +148,8 @@ void RefreshData() {
     for (const auto& [pname, pool] : sys.getPools()) {
         for (const auto& [dname, ds] : pool->getDatasets()) {
             std::wstring wDs(dname.begin(), dname.end());
-            std::wstring wMp = (dname == pname + "/data") ? L"Z:\\" : L"none";
+            std::string mp = ds->getMountPoint();
+            std::wstring wMp = !mp.empty() ? std::wstring(mp.begin(), mp.end()) : ((dname == pname + "/data") ? L"Z:\\" : L"none");
             std::wstring wSnaps = std::to_wstring(ds->getSnapshots().size());
             std::wstring wFiles = std::to_wstring(ds->getFiles().size());
 
@@ -382,6 +383,48 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     break;
                 }
 
+                case ID_BTN_MOUNT: {
+                    auto& sys = TitanZfsSubsystem::Get();
+                    if (sys.getPools().empty()) {
+                        MessageBoxW(hwnd, L"No pools available to mount.", L"Notice", MB_OK);
+                        break;
+                    }
+                    auto pool = sys.getPools().begin()->second;
+                    auto ds = pool->getDataset(pool->getName() + "/data");
+                    if (ds) {
+                        ds->setMountPoint("Z:\\");
+                        sys.saveCache();
+                        std::wstring cmd = L"titanzfs_mount.exe " + std::wstring(pool->getName().begin(), pool->getName().end()) + L"/data Z:";
+                        STARTUPINFOW si{};
+                        si.cb = sizeof(si);
+                        PROCESS_INFORMATION pi{};
+                        std::vector<wchar_t> cmdBuf(cmd.begin(), cmd.end());
+                        cmdBuf.push_back(0);
+                        if (CreateProcessW(nullptr, cmdBuf.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW | DETACHED_PROCESS, nullptr, nullptr, &si, &pi)) {
+                            CloseHandle(pi.hThread);
+                            CloseHandle(pi.hProcess);
+                        }
+                        MessageBoxW(hwnd, L"Dataset 'tank/data' mounted successfully to Z:\\ via WinFsp userland bridge.\nFilesystem is active and visible in File Explorer.", L"Dataset Mounted", MB_OK | MB_ICONINFORMATION);
+                        RefreshData();
+                    }
+                    break;
+                }
+
+                case ID_BTN_UNMOUNT: {
+                    auto& sys = TitanZfsSubsystem::Get();
+                    for (auto& [name, pool] : sys.getPools()) {
+                        for (auto& [dsName, ds] : pool->getDatasets()) {
+                            if (!ds->getMountPoint().empty()) {
+                                ds->setMountPoint("");
+                            }
+                        }
+                    }
+                    sys.saveCache();
+                    MessageBoxW(hwnd, L"Dataset unmounted from Z:\\. WinFsp drive letter released.", L"Dataset Unmounted", MB_OK | MB_ICONINFORMATION);
+                    RefreshData();
+                    break;
+                }
+
                 case ID_BTN_EXPLORE: {
                     // Open mounted drive in Windows File Explorer
                     ShellExecuteW(nullptr, L"open", L"Z:\\", nullptr, nullptr, SW_SHOWNORMAL);
@@ -505,7 +548,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     return static_cast<int>(msg.wParam);
 }
 
-// Fallback main for console / MinGW linkage
-int main(int, char**) {
-    return wWinMain(GetModuleHandleW(nullptr), nullptr, GetCommandLineW(), SW_SHOWNORMAL);
+// WinMain entry point for Win32 GUI subsystem linkers (strictly zero console window)
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
+    (void)hPrevInstance;
+    (void)lpCmdLine;
+    return wWinMain(hInstance, nullptr, GetCommandLineW(), nCmdShow);
 }
