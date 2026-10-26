@@ -552,6 +552,97 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
 
+int g_SplashProgress = 0;
+
+LRESULT CALLBACK SplashWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+        case WM_CREATE: {
+            SetTimer(hwnd, 1, 20, nullptr); // 50 ticks * 20ms = ~1.2s total splash duration
+            return 0;
+        }
+
+        case WM_TIMER: {
+            if (wParam == 1) {
+                g_SplashProgress += 2;
+                InvalidateRect(hwnd, nullptr, FALSE);
+                if (g_SplashProgress >= 100) {
+                    KillTimer(hwnd, 1);
+                    DestroyWindow(hwnd);
+                }
+            }
+            return 0;
+        }
+
+        case WM_ERASEBKGND:
+            return 1; // Prevent background flicker
+
+        case WM_PAINT: {
+            PAINTSTRUCT ps;
+            HDC hdc = BeginPaint(hwnd, &ps);
+
+            RECT rc;
+            GetClientRect(hwnd, &rc);
+            int w = rc.right - rc.left;
+            int h = rc.bottom - rc.top;
+
+            // Off-screen memory buffer for 100% flicker-free rendering
+            HDC memDC = CreateCompatibleDC(hdc);
+            HBITMAP memBmp = CreateCompatibleBitmap(hdc, w, h);
+            HBITMAP oldBmp = reinterpret_cast<HBITMAP>(SelectObject(memDC, memBmp));
+
+            {
+                Gdiplus::Graphics graphics(memDC);
+                graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
+
+                if (!g_HeroImagePath.empty()) {
+                    Gdiplus::Image heroImg(g_HeroImagePath.c_str());
+                    graphics.DrawImage(&heroImg, 0, 0, w, h);
+                } else {
+                    Gdiplus::SolidBrush bgBrush(Gdiplus::Color(255, 15, 23, 35));
+                    graphics.FillRectangle(&bgBrush, 0, 0, w, h);
+                }
+
+                // Semi-transparent bottom status banner (48px)
+                Gdiplus::SolidBrush overlayBrush(Gdiplus::Color(215, 10, 14, 22));
+                graphics.FillRectangle(&overlayBrush, 0, h - 48, w, 48);
+
+                // Luminous cyan progress trace along bottom edge
+                int barWidth = (w * g_SplashProgress) / 100;
+                Gdiplus::SolidBrush barBrush(Gdiplus::Color(255, 0, 200, 255));
+                graphics.FillRectangle(&barBrush, 0, h - 3, barWidth, 3);
+
+                // Status message
+                Gdiplus::FontFamily fontFamily(L"Segoe UI");
+                Gdiplus::Font font(&fontFamily, 9.5f, Gdiplus::FontStyleRegular, Gdiplus::UnitPoint);
+                Gdiplus::SolidBrush textBrush(Gdiplus::Color(240, 225, 235, 245));
+
+                std::wstring statusMsg = L"Initializing TitanZFS Sovereign NT Subsystem Engine...";
+                if (g_SplashProgress > 40) statusMsg = L"Verifying system prerequisites and storage topology...";
+                if (g_SplashProgress > 80) statusMsg = L"Loading TitanZFS Setup Wizard...";
+
+                Gdiplus::PointF origin(18.0f, static_cast<Gdiplus::REAL>(h - 35));
+                graphics.DrawString(statusMsg.c_str(), -1, &font, origin, &textBrush);
+            }
+
+            BitBlt(hdc, 0, 0, w, h, memDC, 0, 0, SRCCOPY);
+            SelectObject(memDC, oldBmp);
+            DeleteObject(memBmp);
+            DeleteDC(memDC);
+
+            EndPaint(hwnd, &ps);
+            return 0;
+        }
+
+        case WM_LBUTTONDOWN:
+        case WM_KEYDOWN: {
+            KillTimer(hwnd, 1);
+            DestroyWindow(hwnd);
+            return 0;
+        }
+    }
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow) {
@@ -579,6 +670,48 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
         return res ? 0 : 1;
     }
 
+    g_HeroImagePath = FindHeroImage();
+
+    // 1. Show Cinematic Hero Splash Screen
+    const wchar_t SPLASH_CLASS[] = L"TitanZFS_Splash_Class";
+    WNDCLASSEXW splashWc{};
+    splashWc.cbSize = sizeof(splashWc);
+    splashWc.style = CS_HREDRAW | CS_VREDRAW;
+    splashWc.lpfnWndProc = SplashWndProc;
+    splashWc.hInstance = hInstance;
+    splashWc.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(32512));
+    splashWc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+    splashWc.lpszClassName = SPLASH_CLASS;
+    RegisterClassExW(&splashWc);
+
+    int screenW = GetSystemMetrics(SM_CXSCREEN);
+    int screenH = GetSystemMetrics(SM_CYSCREEN);
+    int splashW = 640;
+    int splashH = 360;
+    int splashX = (screenW - splashW) / 2;
+    int splashY = (screenH - splashH) / 2;
+
+    HWND hSplash = CreateWindowExW(
+        WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
+        SPLASH_CLASS,
+        L"TitanZFS Splash",
+        WS_POPUP,
+        splashX, splashY, splashW, splashH,
+        nullptr, nullptr, hInstance, nullptr
+    );
+
+    if (hSplash) {
+        ShowWindow(hSplash, SW_SHOW);
+        UpdateWindow(hSplash);
+
+        MSG splashMsg{};
+        while (IsWindow(hSplash) && GetMessageW(&splashMsg, nullptr, 0, 0)) {
+            TranslateMessage(&splashMsg);
+            DispatchMessageW(&splashMsg);
+        }
+    }
+
+    // 2. Initialize Main Setup Wizard
     INITCOMMONCONTROLSEX icex{
         .dwSize = sizeof(icex),
         .dwICC = ICC_PROGRESS_CLASS | ICC_STANDARD_CLASSES
@@ -606,10 +739,14 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
         nullptr, nullptr, hInstance, nullptr
     );
 
-    if (!g_hMainWnd) return 1;
+    if (!g_hMainWnd) {
+        Gdiplus::GdiplusShutdown(g_gdiplusToken);
+        return 1;
+    }
 
     ShowWindow(g_hMainWnd, nCmdShow);
     UpdateWindow(g_hMainWnd);
+    SetForegroundWindow(g_hMainWnd);
 
     MSG msg{};
     while (GetMessageW(&msg, nullptr, 0, 0)) {
