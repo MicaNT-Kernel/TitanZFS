@@ -78,6 +78,10 @@ public:
         // Start 5-second Transaction Group (TXG) sync engine
         txgSyncThread_ = std::thread(&TitanZfsDaemon::txgSyncWorker, this);
         std::cout << "[TitanZFS Daemon] Asynchronous 5-second TXG commit engine started.\n";
+
+        // Start Autonomous Health Watchdog & Monthly Bit-Rot Scrub Engine
+        watchdogThread_ = std::thread(&TitanZfsDaemon::watchdogWorker, this);
+        std::cout << "[TitanZFS Daemon] Autonomous health watchdog & self-healing scrub engine started.\n";
         std::cout << "[TitanZFS Daemon] Service is ready and accepting requests.\n\n";
 
         return true;
@@ -92,6 +96,9 @@ public:
 
         if (txgSyncThread_.joinable()) {
             txgSyncThread_.join();
+        }
+        if (watchdogThread_.joinable()) {
+            watchdogThread_.join();
         }
 
 #ifdef _WIN32
@@ -135,6 +142,33 @@ private:
         }
     }
 
+    void watchdogWorker() {
+        while (running_) {
+            // Sleep in 1-second increments for responsive shutdown
+            for (int i = 0; i < 3600 && running_; ++i) {
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+            }
+            if (!running_) break;
+
+            uint64_t now = static_cast<uint64_t>(std::time(nullptr));
+            // Autonomous scrub cadence: every 30 days (2,592,000 seconds)
+            if (lastScrubTimestamp_ == 0 || now >= lastScrubTimestamp_ + 2592000ULL) {
+                auto& sys = TitanZfsSubsystem::Get();
+                for (const auto& [name, pool] : sys.getPools()) {
+                    uint64_t s = 0, r = 0;
+                    pool->scrubPool(s, r);
+                    totalScrubbedBlocks_ += s;
+                    totalRepairedBlocks_ += r;
+                    if (r > 0) {
+                        std::cerr << "[TitanZFS Watchdog] Bit-rot detected & self-healed in pool '"
+                                  << name << "': " << r << " blocks reconstructed via parity!\n";
+                    }
+                }
+                lastScrubTimestamp_ = now;
+            }
+        }
+    }
+
     int handleIpcCommand(uint32_t cmd, const std::string& request, std::string& response) {
         auto& sys = TitanZfsSubsystem::Get();
 
@@ -148,6 +182,8 @@ private:
                 std::ostringstream oss;
                 oss << "TitanZFS Service: RUNNING\n";
                 oss << "Active Pools: " << sys.getPools().size() << "\n";
+                oss << "Autonomous Health Watchdog: Active (Monthly 256-bit Fletcher-4 Scrub)\n";
+                oss << "Blocks Verified: " << totalScrubbedBlocks_.load() << " | Repaired Bit-Rot: " << totalRepairedBlocks_.load() << "\n";
 #ifdef _WIN32
                 oss << "Active Mounts: " << activeMounts_.size() << "\n";
                 for (const auto& [ds, s] : activeMounts_) {
@@ -225,6 +261,28 @@ private:
                             << std::setw(8) << ToString(pool->getState())
                             << "-\n";
                     }
+                }
+                response = oss.str();
+                return 0;
+            }
+
+            case IpcCmdZpoolScrub: {
+                std::ostringstream oss;
+                uint64_t totalScrubbed = 0, totalRepaired = 0;
+                for (const auto& [name, pool] : sys.getPools()) {
+                    if (!request.empty() && name != request) continue;
+                    uint64_t s = 0, r = 0;
+                    pool->scrubPool(s, r);
+                    totalScrubbed += s;
+                    totalRepaired += r;
+                    totalScrubbedBlocks_ += s;
+                    totalRepairedBlocks_ += r;
+                    oss << "Scrub completed on pool '" << name << "': "
+                        << s << " blocks verified, " << r << " errors repaired.\n";
+                }
+                lastScrubTimestamp_ = static_cast<uint64_t>(std::time(nullptr));
+                if (sys.getPools().empty()) {
+                    oss << "no active pools to scrub\n";
                 }
                 response = oss.str();
                 return 0;
@@ -361,6 +419,10 @@ private:
 
     std::atomic<bool> running_{false};
     std::thread txgSyncThread_;
+    std::thread watchdogThread_;
+    std::atomic<uint64_t> lastScrubTimestamp_{0};
+    std::atomic<uint64_t> totalScrubbedBlocks_{0};
+    std::atomic<uint64_t> totalRepairedBlocks_{0};
     IpcServer ipcServer_;
 #ifdef _WIN32
     std::map<std::string, std::shared_ptr<WinFspMountSession>> activeMounts_;
