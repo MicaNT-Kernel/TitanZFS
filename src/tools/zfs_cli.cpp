@@ -2,6 +2,7 @@
 #include <iomanip>
 #include <vector>
 #include <string>
+#include <cstring>
 #include "titanzfs/titanzfs.hpp"
 
 int main(int argc, char* argv[]) {

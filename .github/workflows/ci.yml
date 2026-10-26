@@ -26,7 +26,7 @@ jobs:
       - name: Configure CMake (Windows Clang)
         if: runner.os == 'Windows'
         run: |
-          cmake -B build -G "Visual Studio 17 2022" -T ClangCL
+          cmake -B build -G "Ninja" -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release
 
       - name: Build (Windows Clang)
         if: runner.os == 'Windows'
@@ -36,9 +36,9 @@ jobs:
       - name: Run Tests (Windows)
         if: runner.os == 'Windows'
         run: |
-          .\build\Release\titanzfs_tests.exe
-          .\build\Release\zpool.exe status
-          .\build\Release\zfs.exe list
+          .\build\titanzfs_tests.exe
+          .\build\zpool.exe status
+          .\build\zfs.exe list
 
       - name: Configure CMake (Linux GCC)
         if: runner.os == 'Linux'

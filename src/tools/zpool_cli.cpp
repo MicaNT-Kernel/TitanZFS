@@ -2,6 +2,7 @@
 #include <iomanip>
 #include <vector>
 #include <string>
+#include <cstring>
 #include "titanzfs/titanzfs.hpp"
 
 // Standalone RAM disk mock for CLI demonstrations
