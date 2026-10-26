@@ -6,6 +6,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Compiler warnings and optimization flags
+if (WIN32)
+    add_compile_definitions(NOMINMAX _CRT_SECURE_NO_WARNINGS)
+endif()
+
 if (MSVC)
     add_compile_options(/W4 /permissive- /Zc:preprocessor)
 else()
