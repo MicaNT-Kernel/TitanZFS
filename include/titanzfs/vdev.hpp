@@ -2,6 +2,10 @@
 
 #include "titanzfs/types.hpp"
 #include "titanzfs/fletcher4.hpp"
+#include <cstring>
+#include <memory>
+#include <string>
+#include <vector>
 
 namespace titanzfs {
 

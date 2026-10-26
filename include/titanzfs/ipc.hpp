@@ -77,6 +77,7 @@ public:
         DWORD err = GetLastError();
         return (err == ERROR_SEM_TIMEOUT || err == ERROR_PIPE_BUSY || err == ERROR_ACCESS_DENIED);
 #else
+        (void)timeoutMs;
         const char* sockPath = "/tmp/titanzfs_ipc.sock";
         int s = socket(AF_UNIX, SOCK_STREAM, 0);
         if (s < 0) return false;
@@ -156,6 +157,7 @@ public:
         CloseHandle(hPipe);
         return static_cast<int>(respHdr.statusCode);
 #else
+        (void)timeoutMs;
         const char* sockPath = "/tmp/titanzfs_ipc.sock";
         int s = socket(AF_UNIX, SOCK_STREAM, 0);
         if (s < 0) return -1;
@@ -181,7 +183,10 @@ public:
         }
 
         if (!request.empty()) {
-            ::write(s, request.data(), request.size());
+            if (::write(s, request.data(), request.size()) < 0) {
+                close(s);
+                return -1;
+            }
         }
 
         IpcResponseHeader respHdr{};
@@ -368,9 +373,8 @@ private:
                         .payloadLength = static_cast<uint32_t>(respStr.size())
                     };
 
-                    ::write(clientFd, &respHdr, sizeof(respHdr));
-                    if (!respStr.empty()) {
-                        ::write(clientFd, respStr.data(), respStr.size());
+                    if (::write(clientFd, &respHdr, sizeof(respHdr)) > 0 && !respStr.empty()) {
+                        (void)::write(clientFd, respStr.data(), respStr.size());
                     }
                 }
             }
