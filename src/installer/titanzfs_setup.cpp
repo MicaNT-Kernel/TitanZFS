@@ -25,6 +25,7 @@
 #include <filesystem>
 #include <thread>
 #include <atomic>
+#include <algorithm>
 
 namespace {
 
@@ -87,6 +88,26 @@ std::wstring FindHeroImage() {
         if (std::filesystem::exists(c, ec)) return c;
     }
     return L"";
+}
+
+// Proportional Aspect-Ratio Filling Helper (Zero distortion, perfectly centered)
+void DrawAspectFill(Gdiplus::Graphics& graphics, Gdiplus::Image* pImg, float targetX, float targetY, float targetW, float targetH) {
+    if (!pImg) return;
+    float imgW = static_cast<float>(pImg->GetWidth());
+    float imgH = static_cast<float>(pImg->GetHeight());
+    if (imgW <= 0.0f || imgH <= 0.0f) return;
+
+    float scale = (std::max)(targetW / imgW, targetH / imgH);
+    float drawW = imgW * scale;
+    float drawH = imgH * scale;
+    float drawX = targetX + (targetW - drawW) / 2.0f;
+    float drawY = targetY + (targetH - drawH) / 2.0f;
+
+    Gdiplus::Region oldClip;
+    graphics.GetClip(&oldClip);
+    graphics.SetClip(Gdiplus::RectF(targetX, targetY, targetW, targetH));
+    graphics.DrawImage(pImg, drawX, drawY, drawW, drawH);
+    graphics.SetClip(&oldClip);
 }
 
 bool CreateShortcut(const std::wstring& targetPath, const std::wstring& shortcutPath, const std::wstring& description) {
@@ -379,65 +400,75 @@ bool PerformUninstall(bool silent) {
     return true;
 }
 
-// Window Procedure
+// Main Window Procedure (Sovereign Studio Left-Sidebar Hero Layout)
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
         case WM_CREATE: {
             BOOL darkMode = TRUE;
             DwmSetWindowAttribute(hwnd, 20 /* DWMWA_USE_IMMERSIVE_DARK_MODE */, &darkMode, sizeof(darkMode));
 
-            g_hFontTitle = CreateFontW(-20, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
-            g_hFontSub = CreateFontW(-13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+            g_hFontTitle = CreateFontW(-22, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+            g_hFontSub = CreateFontW(-13, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
             g_hFontNormal = CreateFontW(-13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
             g_hFontBold = CreateFontW(-13, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
-            g_hDarkBrush = CreateSolidBrush(RGB(24, 24, 24));
+            g_hDarkBrush = CreateSolidBrush(RGB(22, 22, 24));
 
             g_HeroImagePath = FindHeroImage();
 
-            // Setup controls below banner (banner is 0..175)
-            HWND hLblDest = CreateWindowExW(0, L"STATIC", L"Install Location:", WS_CHILD | WS_VISIBLE, 30, 195, 120, 20, hwnd, nullptr, g_hInstance, nullptr);
-            SendMessageW(hLblDest, WM_SETFONT, reinterpret_cast<WPARAM>(g_hFontNormal), TRUE);
+            // Right Content Area (Starts at x = 290, width = 500)
+            HWND hTitle = CreateWindowExW(0, L"STATIC", L"TitanZFS Storage Subsystem", WS_CHILD | WS_VISIBLE, 290, 22, 500, 28, hwnd, nullptr, g_hInstance, nullptr);
+            SendMessageW(hTitle, WM_SETFONT, reinterpret_cast<WPARAM>(g_hFontTitle), TRUE);
 
-            g_hEditDest = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"C:\\Program Files\\TitanZFS", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, 160, 192, 420, 26, hwnd, reinterpret_cast<HMENU>(ID_EDIT_DEST), g_hInstance, nullptr);
+            HWND hSub = CreateWindowExW(0, L"STATIC", L"Sovereign Clean-Room Native ISO C++23 ZFS Storage Engine", WS_CHILD | WS_VISIBLE, 290, 52, 500, 20, hwnd, nullptr, g_hInstance, nullptr);
+            SendMessageW(hSub, WM_SETFONT, reinterpret_cast<WPARAM>(g_hFontSub), TRUE);
+
+            HWND hDesc = CreateWindowExW(0, L"STATIC", L"Deploy high-performance ZFS pools, RAID-Z1, and datasets with zero BSOD risks.", WS_CHILD | WS_VISIBLE, 290, 75, 500, 20, hwnd, nullptr, g_hInstance, nullptr);
+            SendMessageW(hDesc, WM_SETFONT, reinterpret_cast<WPARAM>(g_hFontNormal), TRUE);
+
+            // Destination Folder (y = 115)
+            HWND hLblDest = CreateWindowExW(0, L"STATIC", L"Installation Destination:", WS_CHILD | WS_VISIBLE, 290, 115, 200, 18, hwnd, nullptr, g_hInstance, nullptr);
+            SendMessageW(hLblDest, WM_SETFONT, reinterpret_cast<WPARAM>(g_hFontBold), TRUE);
+
+            g_hEditDest = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"C:\\Program Files\\TitanZFS", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, 290, 138, 385, 28, hwnd, reinterpret_cast<HMENU>(ID_EDIT_DEST), g_hInstance, nullptr);
             SendMessageW(g_hEditDest, WM_SETFONT, reinterpret_cast<WPARAM>(g_hFontNormal), TRUE);
 
-            g_hBtnBrowse = CreateWindowExW(0, L"BUTTON", L"Browse...", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 590, 191, 90, 28, hwnd, reinterpret_cast<HMENU>(ID_BTN_BROWSE), g_hInstance, nullptr);
+            g_hBtnBrowse = CreateWindowExW(0, L"BUTTON", L"Browse...", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON, 685, 137, 95, 30, hwnd, reinterpret_cast<HMENU>(ID_BTN_BROWSE), g_hInstance, nullptr);
             SendMessageW(g_hBtnBrowse, WM_SETFONT, reinterpret_cast<WPARAM>(g_hFontNormal), TRUE);
 
-            // Checkboxes
-            g_hChkPath = CreateWindowExW(0, L"BUTTON", L"Add TitanZFS to System PATH (zpool & zfs CLI access)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP, 30, 235, 600, 24, hwnd, reinterpret_cast<HMENU>(ID_CHK_PATH), g_hInstance, nullptr);
+            // Spaced Checkboxes (y = 185 to 320)
+            g_hChkPath = CreateWindowExW(0, L"BUTTON", L"Add TitanZFS to System PATH (zpool & zfs CLI access)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP, 290, 185, 490, 24, hwnd, reinterpret_cast<HMENU>(ID_CHK_PATH), g_hInstance, nullptr);
             SendMessageW(g_hChkPath, WM_SETFONT, reinterpret_cast<WPARAM>(g_hFontNormal), TRUE);
             SendMessageW(g_hChkPath, BM_SETCHECK, BST_CHECKED, 0);
 
-            g_hChkService = CreateWindowExW(0, L"BUTTON", L"Register & Start TitanZFS Windows NT Service (SERVICE_AUTO_START)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP, 30, 265, 600, 24, hwnd, reinterpret_cast<HMENU>(ID_CHK_SERVICE), g_hInstance, nullptr);
+            g_hChkService = CreateWindowExW(0, L"BUTTON", L"Register & Start TitanZFS Windows NT Service (SERVICE_AUTO_START)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP, 290, 218, 490, 24, hwnd, reinterpret_cast<HMENU>(ID_CHK_SERVICE), g_hInstance, nullptr);
             SendMessageW(g_hChkService, WM_SETFONT, reinterpret_cast<WPARAM>(g_hFontNormal), TRUE);
             SendMessageW(g_hChkService, BM_SETCHECK, BST_CHECKED, 0);
 
-            g_hChkStartMenu = CreateWindowExW(0, L"BUTTON", L"Create Start Menu Program shortcut", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP, 30, 295, 600, 24, hwnd, reinterpret_cast<HMENU>(ID_CHK_STARTMENU), g_hInstance, nullptr);
+            g_hChkStartMenu = CreateWindowExW(0, L"BUTTON", L"Create Start Menu Program shortcut", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP, 290, 251, 490, 24, hwnd, reinterpret_cast<HMENU>(ID_CHK_STARTMENU), g_hInstance, nullptr);
             SendMessageW(g_hChkStartMenu, WM_SETFONT, reinterpret_cast<WPARAM>(g_hFontNormal), TRUE);
             SendMessageW(g_hChkStartMenu, BM_SETCHECK, BST_CHECKED, 0);
 
-            g_hChkDesktop = CreateWindowExW(0, L"BUTTON", L"Create Desktop shortcut", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP, 30, 325, 600, 24, hwnd, reinterpret_cast<HMENU>(ID_CHK_DESKTOP), g_hInstance, nullptr);
+            g_hChkDesktop = CreateWindowExW(0, L"BUTTON", L"Create Desktop shortcut", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP, 290, 284, 490, 24, hwnd, reinterpret_cast<HMENU>(ID_CHK_DESKTOP), g_hInstance, nullptr);
             SendMessageW(g_hChkDesktop, WM_SETFONT, reinterpret_cast<WPARAM>(g_hFontNormal), TRUE);
             SendMessageW(g_hChkDesktop, BM_SETCHECK, BST_CHECKED, 0);
 
-            g_hChkLaunch = CreateWindowExW(0, L"BUTTON", L"Launch TitanZFS Management Console after installation", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP, 30, 355, 600, 24, hwnd, reinterpret_cast<HMENU>(ID_CHK_LAUNCH), g_hInstance, nullptr);
+            g_hChkLaunch = CreateWindowExW(0, L"BUTTON", L"Launch TitanZFS Management Console after installation", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX | WS_TABSTOP, 290, 317, 490, 24, hwnd, reinterpret_cast<HMENU>(ID_CHK_LAUNCH), g_hInstance, nullptr);
             SendMessageW(g_hChkLaunch, WM_SETFONT, reinterpret_cast<WPARAM>(g_hFontNormal), TRUE);
             SendMessageW(g_hChkLaunch, BM_SETCHECK, BST_CHECKED, 0);
 
-            // Progress & Status
-            g_hProgress = CreateWindowExW(0, PROGRESS_CLASSW, L"", WS_CHILD | WS_VISIBLE | PBS_SMOOTH, 30, 395, 650, 16, hwnd, reinterpret_cast<HMENU>(ID_PROGRESS), g_hInstance, nullptr);
+            // Progress & Status (y = 365)
+            g_hProgress = CreateWindowExW(0, PROGRESS_CLASSW, L"", WS_CHILD | WS_VISIBLE | PBS_SMOOTH, 290, 365, 490, 16, hwnd, reinterpret_cast<HMENU>(ID_PROGRESS), g_hInstance, nullptr);
             SendMessageW(g_hProgress, PBM_SETRANGE32, 0, 100);
             SendMessageW(g_hProgress, PBM_SETPOS, 0, 0);
 
-            g_hStaticStatus = CreateWindowExW(0, L"STATIC", L"Ready to install Sovereign TitanZFS on Windows NT.", WS_CHILD | WS_VISIBLE, 30, 420, 650, 22, hwnd, reinterpret_cast<HMENU>(ID_STATIC_STATUS), g_hInstance, nullptr);
+            g_hStaticStatus = CreateWindowExW(0, L"STATIC", L"Ready to install Sovereign TitanZFS on Windows NT.", WS_CHILD | WS_VISIBLE, 290, 392, 490, 42, hwnd, reinterpret_cast<HMENU>(ID_STATIC_STATUS), g_hInstance, nullptr);
             SendMessageW(g_hStaticStatus, WM_SETFONT, reinterpret_cast<WPARAM>(g_hFontNormal), TRUE);
 
-            // Action Buttons
-            g_hBtnInstall = CreateWindowExW(0, L"BUTTON", L"Install TitanZFS", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON | WS_TABSTOP, 420, 460, 150, 36, hwnd, reinterpret_cast<HMENU>(ID_BTN_INSTALL), g_hInstance, nullptr);
+            // Action Buttons (y = 465)
+            g_hBtnInstall = CreateWindowExW(0, L"BUTTON", L"Install TitanZFS", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON | WS_TABSTOP, 485, 465, 175, 38, hwnd, reinterpret_cast<HMENU>(ID_BTN_INSTALL), g_hInstance, nullptr);
             SendMessageW(g_hBtnInstall, WM_SETFONT, reinterpret_cast<WPARAM>(g_hFontBold), TRUE);
 
-            g_hBtnCancel = CreateWindowExW(0, L"BUTTON", L"Cancel", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP, 580, 460, 100, 36, hwnd, reinterpret_cast<HMENU>(ID_BTN_CANCEL), g_hInstance, nullptr);
+            g_hBtnCancel = CreateWindowExW(0, L"BUTTON", L"Cancel", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP, 675, 465, 105, 38, hwnd, reinterpret_cast<HMENU>(ID_BTN_CANCEL), g_hInstance, nullptr);
             SendMessageW(g_hBtnCancel, WM_SETFONT, reinterpret_cast<WPARAM>(g_hFontNormal), TRUE);
 
             return 0;
@@ -449,36 +480,40 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
             RECT clientRect;
             GetClientRect(hwnd, &clientRect);
+            int height = clientRect.bottom - clientRect.top;
             int width = clientRect.right - clientRect.left;
 
-            // Draw Top Hero Banner (0, 0, width, 175)
+            // Draw Left Hero Sidebar Panel (0, 0, 260, height) with Aspect-Fill
             if (!g_HeroImagePath.empty()) {
                 Gdiplus::Graphics graphics(hdc);
                 graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
                 Gdiplus::Image heroImg(g_HeroImagePath.c_str());
-                graphics.DrawImage(&heroImg, 0, 0, width, 175);
+                DrawAspectFill(graphics, &heroImg, 0.0f, 0.0f, 260.0f, static_cast<float>(height));
+
+                // Bottom subtle dark vignette overlay
+                Gdiplus::SolidBrush vignette(Gdiplus::Color(220, 10, 14, 20));
+                graphics.FillRectangle(&vignette, 0, height - 70, 260, 70);
+
+                Gdiplus::FontFamily ff(L"Segoe UI");
+                Gdiplus::Font fTitle(&ff, 10.5f, Gdiplus::FontStyleBold, Gdiplus::UnitPoint);
+                Gdiplus::Font fSub(&ff, 9.0f, Gdiplus::FontStyleRegular, Gdiplus::UnitPoint);
+                Gdiplus::SolidBrush tBrush(Gdiplus::Color(255, 230, 240, 255));
+                Gdiplus::SolidBrush sBrush(Gdiplus::Color(220, 0, 200, 255));
+
+                graphics.DrawString(L"TitanZFS v1.0.0", -1, &fTitle, Gdiplus::PointF(16.0f, static_cast<Gdiplus::REAL>(height - 52)), &tBrush);
+                graphics.DrawString(L"Sovereign NT Edition", -1, &fSub, Gdiplus::PointF(16.0f, static_cast<Gdiplus::REAL>(height - 30)), &sBrush);
             } else {
-                // Sleek Gradient fallback
-                HBRUSH hBannerBrush = CreateSolidBrush(RGB(15, 23, 35));
-                RECT rcBanner{0, 0, width, 175};
-                FillRect(hdc, &rcBanner, hBannerBrush);
-                DeleteObject(hBannerBrush);
-
-                SetBkMode(hdc, TRANSPARENT);
-                SetTextColor(hdc, RGB(255, 255, 255));
-                SelectObject(hdc, g_hFontTitle);
-                TextOutW(hdc, 30, 40, L"TitanZFS Storage Pool Subsystem", 31);
-
-                SetTextColor(hdc, RGB(60, 180, 240));
-                SelectObject(hdc, g_hFontSub);
-                TextOutW(hdc, 30, 75, L"Sovereign Clean-Room Native ISO C++23 ZFS Storage Engine", 56);
+                HBRUSH hSideBrush = CreateSolidBrush(RGB(15, 23, 35));
+                RECT rcSide{0, 0, 260, height};
+                FillRect(hdc, &rcSide, hSideBrush);
+                DeleteObject(hSideBrush);
             }
 
-            // Cyan accent separator line at y = 175
+            // Vertical Cyan Accent Separator Line at x = 260
             HPEN hPen = CreatePen(PS_SOLID, 2, RGB(0, 190, 255));
             HPEN hOldPen = reinterpret_cast<HPEN>(SelectObject(hdc, hPen));
-            MoveToEx(hdc, 0, 175, nullptr);
-            LineTo(hdc, width, 175);
+            MoveToEx(hdc, 260, 0, nullptr);
+            LineTo(hdc, 260, height);
             SelectObject(hdc, hOldPen);
             DeleteObject(hPen);
 
@@ -489,7 +524,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         case WM_CTLCOLORSTATIC:
         case WM_CTLCOLORDLG: {
             HDC hdc = reinterpret_cast<HDC>(wParam);
-            SetBkColor(hdc, RGB(24, 24, 24));
+            SetBkColor(hdc, RGB(22, 22, 24));
             SetTextColor(hdc, RGB(225, 225, 225));
             return reinterpret_cast<LRESULT>(g_hDarkBrush);
         }
@@ -498,9 +533,28 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             int wmId = LOWORD(wParam);
             if (wmId == ID_BTN_CANCEL) {
                 PostQuitMessage(0);
+            } else if (wmId == ID_BTN_BROWSE) {
+                IFileDialog* pfd = nullptr;
+                if (SUCCEEDED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pfd)))) {
+                    DWORD dwOptions = 0;
+                    if (SUCCEEDED(pfd->GetOptions(&dwOptions))) {
+                        pfd->SetOptions(dwOptions | FOS_PICKFOLDERS);
+                    }
+                    if (SUCCEEDED(pfd->Show(hwnd))) {
+                        IShellItem* psi = nullptr;
+                        if (SUCCEEDED(pfd->GetResult(&psi))) {
+                            PWSTR pszPath = nullptr;
+                            if (SUCCEEDED(psi->GetDisplayName(SIGDN_FILESYSPATH, &pszPath))) {
+                                SetWindowTextW(g_hEditDest, pszPath);
+                                CoTaskMemFree(pszPath);
+                            }
+                            psi->Release();
+                        }
+                    }
+                    pfd->Release();
+                }
             } else if (wmId == ID_BTN_INSTALL) {
                 if (g_InstallFinished) {
-                    // Launch and exit
                     wchar_t destBuf[MAX_PATH]{};
                     GetWindowTextW(g_hEditDest, destBuf, MAX_PATH);
                     std::wstring adminExe = std::wstring(destBuf) + L"\\titanzfs_admin.exe";
@@ -596,7 +650,7 @@ LRESULT CALLBACK SplashWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam
 
                 if (!g_HeroImagePath.empty()) {
                     Gdiplus::Image heroImg(g_HeroImagePath.c_str());
-                    graphics.DrawImage(&heroImg, 0, 0, w, h);
+                    DrawAspectFill(graphics, &heroImg, 0.0f, 0.0f, static_cast<float>(w), static_cast<float>(h));
                 } else {
                     Gdiplus::SolidBrush bgBrush(Gdiplus::Color(255, 15, 23, 35));
                     graphics.FillRectangle(&bgBrush, 0, 0, w, h);
@@ -711,7 +765,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
         }
     }
 
-    // 2. Initialize Main Setup Wizard
+    // 2. Initialize Main Setup Wizard (Spacious Left-Sidebar Studio Layout)
     INITCOMMONCONTROLSEX icex{
         .dwSize = sizeof(icex),
         .dwICC = ICC_PROGRESS_CLASS | ICC_STANDARD_CLASSES
@@ -735,7 +789,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR pCmdLine, int nCmdShow
         CLASS_NAME,
         L"TitanZFS Storage Pool Subsystem Setup",
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
-        CW_USEDEFAULT, CW_USEDEFAULT, 720, 550,
+        CW_USEDEFAULT, CW_USEDEFAULT, 830, 560,
         nullptr, nullptr, hInstance, nullptr
     );
 
