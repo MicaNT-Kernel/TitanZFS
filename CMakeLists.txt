@@ -48,7 +48,29 @@ if (WIN32)
 
     add_executable(titanzfs_admin WIN32 src/admin/titanzfs_admin.cpp)
     target_link_libraries(titanzfs_admin PRIVATE titanzfs_core user32 gdi32 comctl32 dwmapi uxtheme ole32 shell32)
+
+    add_executable(titanzfs_setup WIN32 src/installer/titanzfs_setup.cpp)
+    target_link_libraries(titanzfs_setup PRIVATE titanzfs_core user32 gdi32 gdiplus comctl32 dwmapi uxtheme ole32 oleaut32 shell32 advapi32)
 endif()
+
+# ============================================================================
+# CPack Packaging Configuration
+# ============================================================================
+set(CPACK_PACKAGE_NAME "TitanZFS")
+set(CPACK_PACKAGE_VENDOR "MicaNT-Kernel")
+set(CPACK_PACKAGE_VERSION "1.0.0")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Sovereign Clean-Room Native ISO C++23 ZFS Storage Subsystem for Windows NT and MicaNT")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
+set(CPACK_RESOURCE_FILE_README "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
+
+install(TARGETS titanzfs_tests zpool zfs titanzfs_svc RUNTIME DESTINATION bin)
+if (WIN32)
+    install(TARGETS titanzfs_mount titanzfs_admin titanzfs_setup RUNTIME DESTINATION bin)
+    install(DIRECTORY assets/ DESTINATION assets)
+endif()
+
+set(CPACK_GENERATOR "ZIP")
+include(CPack)
 
 # CTest registration
 enable_testing()
