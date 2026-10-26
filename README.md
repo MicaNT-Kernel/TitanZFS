@@ -80,16 +80,18 @@ Snapshots can be serialized into compressed binary streams (`zfs send dataset@sn
 
 ## Native Windows Daemon & Tooling
 
-### `titanzfs_setup` - 1-Click Native Standalone Installer & Uninstaller
+### `titanzfs_setup` - 1-Click Standalone Installer & Uninstaller
 ```text
-Interactive Win32 Dark Mode Installer.
+Self-contained Win32 Dark Mode single-file installer (no zip extraction needed).
+Embeds all binaries (titanzfs_admin, titanzfs_svc, titanzfs_mount, zpool, zfs, assets)
+directly in the executable payload using clean-room LZ4 compression.
 Automatically provisions TitanZFS into C:\Program Files\TitanZFS, configures
 system PATH environment variables, registers and starts the Windows NT Auto-Start
 Service, creates Start Menu / Desktop shortcuts, and registers standard Windows
 "Add or Remove Programs" uninstallation entries.
 
 Usage:
-  titanzfs_setup.exe              # Launch interactive installer
+  titanzfs_setup.exe              # Launch interactive standalone installer
   titanzfs_setup.exe /silent      # Unattended silent install
   titanzfs_setup.exe /uninstall   # Clean system removal & service unregistration
 ```

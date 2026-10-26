@@ -22,12 +22,104 @@
 
 #include <string>
 #include <vector>
+#include <fstream>
 #include <filesystem>
 #include <thread>
 #include <atomic>
 #include <algorithm>
+#include "titanzfs/compression.hpp"
 
 namespace {
+
+#pragma pack(push, 1)
+struct PayloadFooter {
+    uint64_t tocOffset{0};
+    uint64_t payloadStart{0};
+    char     magic[16]{"TITANZFS_BUNDLE"};
+};
+#pragma pack(pop)
+static_assert(sizeof(PayloadFooter) == 32, "PayloadFooter must be 32 bytes");
+
+struct EmbeddedFile {
+    std::string name;
+    uint64_t offset{0};
+    uint64_t compSize{0};
+    uint64_t uncompSize{0};
+    uint32_t isCompressed{0};
+};
+
+bool ReadEmbeddedPayload(std::vector<EmbeddedFile>& outEntries) {
+    wchar_t thisExe[MAX_PATH];
+    if (GetModuleFileNameW(nullptr, thisExe, MAX_PATH) == 0) return false;
+
+    std::ifstream file(thisExe, std::ios::binary);
+    if (!file.is_open()) return false;
+
+    file.seekg(0, std::ios::end);
+    uint64_t fileSize = static_cast<uint64_t>(file.tellg());
+    if (fileSize < sizeof(PayloadFooter)) return false;
+
+    file.seekg(fileSize - sizeof(PayloadFooter), std::ios::beg);
+    PayloadFooter footer{};
+    file.read(reinterpret_cast<char*>(&footer), sizeof(footer));
+
+    if (std::memcmp(footer.magic, "TITANZFS_BUNDLE", 15) != 0) return false;
+    if (footer.tocOffset >= fileSize || footer.payloadStart >= fileSize) return false;
+
+    file.seekg(footer.tocOffset, std::ios::beg);
+    uint32_t entryCount = 0;
+    file.read(reinterpret_cast<char*>(&entryCount), sizeof(entryCount));
+    if (entryCount == 0 || entryCount > 256) return false;
+
+    outEntries.clear();
+    for (uint32_t i = 0; i < entryCount; ++i) {
+        uint32_t nameLen = 0;
+        file.read(reinterpret_cast<char*>(&nameLen), sizeof(nameLen));
+        if (nameLen > 1024) return false;
+        std::string name(nameLen, '\0');
+        file.read(name.data(), nameLen);
+
+        EmbeddedFile ent;
+        ent.name = name;
+        file.read(reinterpret_cast<char*>(&ent.offset), sizeof(ent.offset));
+        file.read(reinterpret_cast<char*>(&ent.compSize), sizeof(ent.compSize));
+        file.read(reinterpret_cast<char*>(&ent.uncompSize), sizeof(ent.uncompSize));
+        file.read(reinterpret_cast<char*>(&ent.isCompressed), sizeof(ent.isCompressed));
+        outEntries.push_back(std::move(ent));
+    }
+    return !outEntries.empty();
+}
+
+bool ExtractEmbeddedFile(const EmbeddedFile& ent, const std::wstring& outPath) {
+    wchar_t thisExe[MAX_PATH];
+    if (GetModuleFileNameW(nullptr, thisExe, MAX_PATH) == 0) return false;
+
+    std::ifstream file(thisExe, std::ios::binary);
+    if (!file.is_open()) return false;
+
+    file.seekg(ent.offset, std::ios::beg);
+    std::vector<uint8_t> buffer(ent.compSize);
+    file.read(reinterpret_cast<char*>(buffer.data()), ent.compSize);
+
+    std::vector<uint8_t> decompressed;
+    if (ent.isCompressed) {
+        decompressed.resize(ent.uncompSize);
+        if (!titanzfs::CompressionEngine::DecompressLZ4(buffer, decompressed)) {
+            return false;
+        }
+    } else {
+        decompressed = std::move(buffer);
+    }
+
+    std::error_code ec;
+    std::filesystem::path p(outPath);
+    std::filesystem::create_directories(p.parent_path(), ec);
+
+    std::ofstream out(p, std::ios::binary | std::ios::trunc);
+    if (!out.is_open()) return false;
+    out.write(reinterpret_cast<const char*>(decompressed.data()), decompressed.size());
+    return true;
+}
 
 enum {
     ID_EDIT_DEST = 1001,
@@ -76,6 +168,26 @@ std::wstring GetModuleDir() {
 }
 
 std::wstring FindHeroImage() {
+    // 1. Check if embedded inside this executable's payload
+    std::vector<EmbeddedFile> entries;
+    if (ReadEmbeddedPayload(entries)) {
+        for (const auto& e : entries) {
+            if (e.name.find("hero.jpg") != std::string::npos) {
+                std::error_code ec;
+                std::wstring tempDir = std::filesystem::temp_directory_path().wstring() + L"\\TitanZFS";
+                std::filesystem::create_directories(tempDir, ec);
+                std::wstring tempHero = tempDir + L"\\titanzfs_hero.jpg";
+                if (!std::filesystem::exists(tempHero, ec)) {
+                    ExtractEmbeddedFile(e, tempHero);
+                }
+                if (std::filesystem::exists(tempHero, ec)) {
+                    return tempHero;
+                }
+            }
+        }
+    }
+
+    // 2. Fall back to local directory scan
     std::wstring dir = GetModuleDir();
     std::vector<std::wstring> candidates = {
         dir + L"\\assets\\titanzfs_hero.jpg",
@@ -240,31 +352,48 @@ bool PerformInstall(const std::wstring& dstDir, bool addPath, bool installSvc, b
 
     std::wstring srcDir = GetModuleDir();
 
-    // 1. Copy Executables
-    setStatus(L"Installing TitanZFS Storage Management Console...", 25);
-    CopyAppFile(srcDir, dstDir, L"titanzfs_admin.exe");
+    // 1. Install Executables and Assets (from Embedded Bundle or Loose Files)
+    std::vector<EmbeddedFile> embeddedFiles;
+    bool hasEmbedded = ReadEmbeddedPayload(embeddedFiles);
 
-    setStatus(L"Installing Windows NT Background Service daemon...", 40);
-    CopyAppFile(srcDir, dstDir, L"titanzfs_svc.exe");
+    if (hasEmbedded && !embeddedFiles.empty()) {
+        int idx = 0;
+        for (const auto& ef : embeddedFiles) {
+            int pct = 20 + static_cast<int>((idx * 45) / embeddedFiles.size());
+            std::wstring wName(ef.name.begin(), ef.name.end());
+            setStatus(L"Extracting " + wName + L"...", pct);
 
-    setStatus(L"Installing WinFsp Userland Filesystem Bridge...", 50);
-    CopyAppFile(srcDir, dstDir, L"titanzfs_mount.exe");
+            std::wstring targetFilePath = dstDir + L"\\" + wName;
+            ExtractEmbeddedFile(ef, targetFilePath);
+            idx++;
+        }
+    } else {
+        // Fallback to copying loose files from installer directory
+        setStatus(L"Installing TitanZFS Management Console...", 25);
+        CopyAppFile(srcDir, dstDir, L"titanzfs_admin.exe");
 
-    setStatus(L"Installing ZFS and Storage Pool Command-Line Tools...", 60);
-    CopyAppFile(srcDir, dstDir, L"zpool.exe");
-    CopyAppFile(srcDir, dstDir, L"zfs.exe");
+        setStatus(L"Installing Windows NT Background Service daemon...", 40);
+        CopyAppFile(srcDir, dstDir, L"titanzfs_svc.exe");
+
+        setStatus(L"Installing WinFsp Userland Filesystem Bridge...", 50);
+        CopyAppFile(srcDir, dstDir, L"titanzfs_mount.exe");
+
+        setStatus(L"Installing ZFS and Storage Pool Command-Line Tools...", 60);
+        CopyAppFile(srcDir, dstDir, L"zpool.exe");
+        CopyAppFile(srcDir, dstDir, L"zfs.exe");
+
+        // Copy assets if available
+        std::wstring heroSrc = FindHeroImage();
+        if (!heroSrc.empty()) {
+            std::filesystem::create_directories(dstDir + L"\\assets", ec);
+            std::filesystem::copy_file(heroSrc, dstDir + L"\\assets\\titanzfs_hero.jpg", std::filesystem::copy_options::overwrite_existing, ec);
+        }
+    }
 
     // Copy setup tool itself for uninstaller capability
     wchar_t thisExe[MAX_PATH];
     GetModuleFileNameW(nullptr, thisExe, MAX_PATH);
     std::filesystem::copy_file(thisExe, dstDir + L"\\titanzfs_setup.exe", std::filesystem::copy_options::overwrite_existing, ec);
-
-    // Copy assets if available
-    std::wstring heroSrc = FindHeroImage();
-    if (!heroSrc.empty()) {
-        std::filesystem::create_directories(dstDir + L"\\assets", ec);
-        std::filesystem::copy_file(heroSrc, dstDir + L"\\assets\\titanzfs_hero.jpg", std::filesystem::copy_options::overwrite_existing, ec);
-    }
 
     // 2. Add to PATH
     if (addPath) {

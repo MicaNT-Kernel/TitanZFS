@@ -49,8 +49,24 @@ if (WIN32)
     add_executable(titanzfs_admin WIN32 src/admin/titanzfs_admin.cpp)
     target_link_libraries(titanzfs_admin PRIVATE titanzfs_core user32 gdi32 comctl32 dwmapi uxtheme ole32 shell32)
 
+    add_executable(titanzfs_packager src/tools/titanzfs_packager.cpp)
+    target_link_libraries(titanzfs_packager PRIVATE titanzfs_core)
+
     add_executable(titanzfs_setup WIN32 src/installer/titanzfs_setup.cpp)
     target_link_libraries(titanzfs_setup PRIVATE titanzfs_core user32 gdi32 gdiplus comctl32 dwmapi uxtheme ole32 oleaut32 shell32 advapi32)
+    add_dependencies(titanzfs_setup titanzfs_admin titanzfs_svc titanzfs_mount zpool zfs titanzfs_packager)
+
+    add_custom_command(
+        TARGET titanzfs_setup POST_BUILD
+        COMMAND titanzfs_packager $<TARGET_FILE:titanzfs_setup>
+                $<TARGET_FILE:titanzfs_admin>
+                $<TARGET_FILE:titanzfs_svc>
+                $<TARGET_FILE:titanzfs_mount>
+                $<TARGET_FILE:zpool>
+                $<TARGET_FILE:zfs>
+                ${CMAKE_CURRENT_SOURCE_DIR}/assets/titanzfs_hero.jpg
+        COMMENT "Embedding all binaries and assets into standalone titanzfs_setup.exe..."
+    )
 endif()
 
 # ============================================================================
