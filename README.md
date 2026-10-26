@@ -78,7 +78,16 @@ Snapshots can be serialized into compressed binary streams (`zfs send dataset@sn
 
 ---
 
-## Native Windows Daemon & CLI Tooling
+## Native Windows Daemon & Tooling
+
+### `titanzfs_admin` - Enterprise Native Win32 Management Console
+```text
+Native Windows NT 10/11 & Windows Server Dark Mode GUI Management Console.
+Provides real-time visualization of Storage Pools, Physical/Virtual drives,
+Dataset mount points, and CoW snapshots with single-click Scrub, Mount,
+and Rollback capabilities. Strictly native Win32/C++23—zero Electron,
+zero web bloat, instant startup (<50ms), and minimal memory footprint (~4MB).
+```
 
 ### `titanzfs_svc` - Windows NT Background Service
 ```text
