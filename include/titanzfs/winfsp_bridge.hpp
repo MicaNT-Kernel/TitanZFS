@@ -418,9 +418,17 @@ private:
         std::memset(VolumeInfo, 0, sizeof(*VolumeInfo));
         VolumeInfo->TotalSize = 128ULL * 1024 * 1024 * 1024;
         VolumeInfo->FreeSize = 120ULL * 1024 * 1024 * 1024;
-        const wchar_t label[] = L"TitanZFS";
-        VolumeInfo->VolumeLabelLength = sizeof(label) - sizeof(wchar_t);
-        std::memcpy(VolumeInfo->VolumeLabel, label, sizeof(label));
+        std::wstring wLabel = L"ZFS Pool";
+        if (self->dataset_) {
+            std::string dsName = self->dataset_->getName();
+            if (!dsName.empty()) {
+                wLabel.assign(dsName.begin(), dsName.end());
+            }
+        }
+        if (wLabel.size() > 31) wLabel.resize(31);
+        VolumeInfo->VolumeLabelLength = static_cast<UINT16>(wLabel.size() * sizeof(wchar_t));
+        std::memcpy(VolumeInfo->VolumeLabel, wLabel.c_str(), VolumeInfo->VolumeLabelLength);
+        VolumeInfo->VolumeLabel[wLabel.size()] = 0;
         return STATUS_SUCCESS;
     }
 
